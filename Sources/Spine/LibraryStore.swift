@@ -21,10 +21,10 @@ struct LibraryStore {
         return name.rangeOfCharacter(from: .alphanumerics) == nil ? "Unknown Author" : name
     }
 
-    static func folderName(_ text: String, fallback: String) -> String {
+    static func bookName(_ text: String, fallback: String) -> String {
         var name = text.folding(options: .diacriticInsensitive, locale: Locale(identifier: "en_US_POSIX"))
             .lowercased().components(separatedBy: CharacterSet.alphanumerics.inverted)
-            .filter { !$0.isEmpty }.joined(separator: "_")
+            .filter { !$0.isEmpty }.joined(separator: "-")
         // Leave room for file extensions within filesystem limits.
         while name.utf8.count > 180 { name.removeLast() }
         return name.isEmpty ? fallback : name
@@ -52,13 +52,13 @@ struct LibraryStore {
 
     private func destination(for book: Book) throws -> URL {
         let author = Self.authorFolder(book.author)
-        let title = Self.folderName(book.title, fallback: "untitled")
+        let title = Self.bookName(book.title, fallback: "untitled")
         let authorDirectory = root.appendingPathComponent(author, isDirectory: true)
         try checkLocation(authorDirectory)
         var destination = authorDirectory.appendingPathComponent(title + ".epub")
         var number = 2
         while [destination, cover(id(for: destination))].contains(where: { FileManager.default.fileExists(atPath: $0.path) }) {
-            destination = authorDirectory.appendingPathComponent("\(title)_\(number).epub")
+            destination = authorDirectory.appendingPathComponent("\(title)-\(number).epub")
             number += 1
         }
         try checkLocation(destination)
@@ -89,7 +89,7 @@ struct LibraryStore {
         let epub = try EPUB(source); defer { epub.clean() }
         let original = try epub.book(id: book.id)
         let authorChanged = Self.authorFolder(original.author) != Self.authorFolder(book.author)
-        let titleChanged = Self.folderName(original.title, fallback: "untitled") != Self.folderName(book.title, fallback: "untitled")
+        let titleChanged = Self.bookName(original.title, fallback: "untitled") != Self.bookName(book.title, fallback: "untitled")
         guard authorChanged || titleChanged else {
             try prepareMetadata(book.id)
             try epub.save(book, to: source)

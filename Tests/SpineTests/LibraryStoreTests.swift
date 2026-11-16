@@ -28,12 +28,12 @@ final class LibraryStoreTests: XCTestCase {
         return archive
     }
 
-    func testFolderNamesAreLowercaseSafeAndBounded() {
-        XCTAssertEqual(LibraryStore.folderName("Susanna Clarke", fallback: "unknown"), "susanna_clarke")
-        XCTAssertEqual(LibraryStore.folderName("../Café: A / Book?!", fallback: "unknown"), "cafe_a_book")
-        XCTAssertEqual(LibraryStore.folderName("... /", fallback: "untitled"), "untitled")
-        XCTAssertEqual(LibraryStore.folderName("東京", fallback: "unknown"), "東京")
-        XCTAssertLessThanOrEqual(LibraryStore.folderName(String(repeating: "本", count: 300), fallback: "unknown").utf8.count, 180)
+    func testBookNamesAreKebabCaseSafeAndBounded() {
+        XCTAssertEqual(LibraryStore.bookName("Susanna Clarke", fallback: "unknown"), "susanna-clarke")
+        XCTAssertEqual(LibraryStore.bookName("../Café: A / Book?!", fallback: "unknown"), "cafe-a-book")
+        XCTAssertEqual(LibraryStore.bookName("... /", fallback: "untitled"), "untitled")
+        XCTAssertEqual(LibraryStore.bookName("東京", fallback: "unknown"), "東京")
+        XCTAssertLessThanOrEqual(LibraryStore.bookName(String(repeating: "本", count: 300), fallback: "unknown").utf8.count, 180)
     }
 
     func testAuthorFoldersUseSafeTitleCaseNames() {
@@ -55,8 +55,8 @@ final class LibraryStoreTests: XCTestCase {
         var second = try store.importBook(source)
         second.title = "Another Book"
         second = try store.save(second)
-        XCTAssertEqual(second.id, "Susanna Clarke/another_book.epub")
-        XCTAssertEqual(Set(try FileManager.default.contentsOfDirectory(atPath: root.appendingPathComponent("Susanna Clarke").path)), Set(["piranesi.epub", "another_book.epub"]))
+        XCTAssertEqual(second.id, "Susanna Clarke/another-book.epub")
+        XCTAssertEqual(Set(try FileManager.default.contentsOfDirectory(atPath: root.appendingPathComponent("Susanna Clarke").path)), Set(["piranesi.epub", "another-book.epub"]))
         XCTAssertTrue(store.cover(second.id).path.contains("/.spine/Susanna Clarke/"))
         try FileManager.default.createDirectory(at: root.appendingPathComponent(".spine"), withIntermediateDirectories: true)
         try FileManager.default.copyItem(at: source, to: root.appendingPathComponent(".spine/not-a-library-book.epub"))
@@ -81,7 +81,7 @@ final class LibraryStoreTests: XCTestCase {
         XCTAssertThrowsError(try store.save(second))
         XCTAssertEqual(try Data(contentsOf: store.file(second.id)), original)
         XCTAssertEqual(try Data(contentsOf: store.file(first.id)), try Data(contentsOf: source))
-        XCTAssertFalse(FileManager.default.fileExists(atPath: root.appendingPathComponent("Susanna Clarke/failed_rename.epub").path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: root.appendingPathComponent("Susanna Clarke/failed-rename.epub").path))
     }
 
     func testHiddenMetadataCannotRedirectWritesOutsideLibrary() throws {
@@ -109,7 +109,7 @@ final class LibraryStoreTests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: store.file(first.id)), original)
         XCTAssertEqual(try Data(contentsOf: source), original)
         let second = try store.importBook(source)
-        XCTAssertEqual(second.id, "Susanna Clarke/piranesi_2.epub")
+        XCTAssertEqual(second.id, "Susanna Clarke/piranesi-2.epub")
         XCTAssertEqual(try Data(contentsOf: store.file(first.id)), original)
         try FileManager.default.copyItem(at: source, to: root.appendingPathComponent("old-id.epub"))
         XCTAssertEqual(Set(try store.load().map(\.id)), Set([first.id, second.id, "old-id.epub"]))
@@ -247,8 +247,8 @@ final class LibraryStoreTests: XCTestCase {
         try cover.write(to: store.cover(book.id))
         for (author, title, expected) in [
             ("New Author", "Piranesi", "New Author/piranesi.epub"),
-            ("New Author", "New Title", "New Author/new_title.epub"),
-            ("Other Author", "Other Title", "Other Author/other_title.epub")
+            ("New Author", "New Title", "New Author/new-title.epub"),
+            ("Other Author", "Other Title", "Other Author/other-title.epub")
         ] {
             let previous = book
             book.author = author; book.title = title
@@ -280,7 +280,7 @@ final class LibraryStoreTests: XCTestCase {
         second = try store.save(second)
         second.title = first.title
         second = try store.save(second)
-        XCTAssertEqual(second.id, "Susanna Clarke/piranesi_2.epub")
+        XCTAssertEqual(second.id, "Susanna Clarke/piranesi-2.epub")
         XCTAssertEqual(try Data(contentsOf: store.file(first.id)), try Data(contentsOf: source))
         let id = second.id
         second.publisher = "New publisher"
