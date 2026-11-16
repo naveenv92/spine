@@ -207,11 +207,15 @@ struct LibraryView: View {
         } description: {
             Text("Spine copies imported books into this folder, organized by author and title. Your original files stay where they are.")
         } actions: {
-            Button("Choose Library Folder…", action: chooseLibrary).buttonStyle(.borderedProminent).controlSize(.large)
+            Button(action: chooseLibrary) {
+                Text("Choose Library Folder…").frame(width: 180)
+            }.buttonStyle(.borderedProminent).controlSize(.large)
             if FileManager.default.fileExists(atPath: previousLibrary.path) {
-                Button("Use Previous Library") {
+                Button {
                     setLibrary(previousLibrary)
-                }
+                } label: {
+                    Text("Use Previous Library").frame(width: 180)
+                }.buttonStyle(.bordered).controlSize(.large)
             }
         }.frame(maxWidth: .infinity, maxHeight: .infinity)
     }
