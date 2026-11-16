@@ -61,7 +61,7 @@ struct LibraryView: View {
                 Picker("Layout", selection: $listView) {
                     Image(systemName: "square.grid.2x2").tag(false)
                     Image(systemName: "list.bullet").tag(true)
-                }.pickerStyle(.segmented).frame(width: 90)
+                }.pickerStyle(.segmented).labelsHidden().frame(width: 90)
             }
             .overlay(alignment: .bottom) { Divider().offset(y: 1) }
             collection
@@ -83,7 +83,6 @@ struct LibraryView: View {
                     .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
             }
             Spacer()
-            Text("Your next chapter awaits.").font(.caption).foregroundStyle(.secondary)
         }.padding(20).frame(width: 190).frame(maxHeight: .infinity)
             .background(Color(red: 0.065, green: 0.07, blue: 0.075))
     }

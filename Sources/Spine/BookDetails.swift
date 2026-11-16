@@ -11,6 +11,7 @@ struct BookDetails<Cover: View>: View {
     @State private var isEditing = false
     @State private var editingDescription = false
     @State private var confirmDiscard = false
+    @State private var descriptionHeight: CGFloat = 1
 
     var body: some View {
         VStack(alignment: .leading, spacing: 28) {
@@ -79,7 +80,7 @@ struct BookDetails<Cover: View>: View {
                             } else if book.description.isEmpty {
                                 Text("No description available.").foregroundStyle(.secondary)
                             } else {
-                                DescriptionView(html: book.description).frame(height: 420)
+                                DescriptionView(html: book.description, height: $descriptionHeight).frame(height: descriptionHeight)
                                     .accessibilityLabel("Book description")
                             }
                         }.frame(maxWidth: .infinity, alignment: .leading)
