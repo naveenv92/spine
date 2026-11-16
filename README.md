@@ -8,6 +8,8 @@ Spine scans the selected folder recursively, including existing EPUBs. The built
 
 To remove a book, right-click its card or list row and choose “Remove book”, or use “Remove Book” on its details page. After confirmation, Spine moves the EPUB, cover cache, backup, and empty book/author folders to Trash. Shared folders, unrelated files, and the library root stay in place.
 
-Status: incomplete implementation of the proposed app. Cover replacement, series editing, SwiftData indexing, background processing, folder/drop import, deduplication, unsaved-change prompts and crash recovery remain unfinished. System zip/unzip are used instead of ZIPFoundation. Only import trusted local files: archive expansion and symlink defenses are not complete. Do not use as your sole library or backup.
+Use “Edit Artwork” on the details page to choose a PNG/JPEG, preview it, and save it inside the EPUB. Existing JPEG, PNG, and GIF covers retain their image path and format; books without cover metadata receive a new cover image. A pre-edit backup is kept and the cover cache refreshes. SVG cover replacement and adding a new cover reading page are not supported. Finish or cancel metadata editing before editing artwork.
+
+Status: incomplete implementation of the proposed app. Series editing, SwiftData indexing, background processing, folder/drop import, deduplication, and crash recovery remain unfinished. System zip/unzip are used instead of ZIPFoundation. Only import trusted local files: archive expansion and symlink defenses are not complete. Do not use as your sole library or backup.
 
 Checks: `swift test`. Real EPUB compatibility and EPUBCheck validation remain necessary.

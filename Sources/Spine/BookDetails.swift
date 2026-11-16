@@ -8,6 +8,7 @@ struct BookDetails<Cover: View>: View {
     let open: () -> Void
     let export: () -> Void
     let remove: () -> Void
+    let editArtwork: () -> Void
     @State private var original: Book?
     @State private var isEditing = false
     @State private var editingDescription = false
@@ -109,6 +110,7 @@ struct BookDetails<Cover: View>: View {
             } label: { Label("Edit Metadata", systemImage: "pencil") }
                 .buttonStyle(.borderedProminent)
         }
+        Button(action: editArtwork) { Label("Edit Artwork", systemImage: "photo") }.disabled(isEditing)
         Button(action: open) { Label("Open Book", systemImage: "book") }
         Button(action: export) { Label("Export", systemImage: "square.and.arrow.up") }
     }

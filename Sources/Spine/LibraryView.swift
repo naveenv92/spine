@@ -9,6 +9,7 @@ struct LibraryView: View {
     @State private var listView = false
     @State private var error: String?
     @State private var bookToRemove: Book?
+    @State private var artworkData: Data?
     private let accent = Color(red: 0.48, green: 0.37, blue: 0.92)
     @AppStorage("libraryFolder") private var libraryFolder = ""
     private var store: LibraryStore { LibraryStore(root: URL(fileURLWithPath: libraryFolder, isDirectory: true)) }
@@ -39,7 +40,7 @@ struct LibraryView: View {
                             do { try FileManager.default.copyItem(at: file(book.id), to: url) }
                             catch { self.error = error.localizedDescription }
                         }
-                    }, remove: { bookToRemove = book }).id(book.id)
+                    }, remove: { bookToRemove = book }, editArtwork: chooseArtwork).id(book.id)
                 } else {
                     library
                 }
@@ -50,6 +51,15 @@ struct LibraryView: View {
         .preferredColorScheme(.dark)
         .tint(accent)
         .onChange(of: libraryFolder, initial: true) { load() }
+        .sheet(isPresented: Binding(get: { artworkData != nil }, set: { if !$0 { artworkData = nil } })) {
+            if let data = artworkData, let book = selected {
+                ArtworkEditor(data: data, save: {
+                    try store.replaceCover(data, for: book)
+                    load(); selected = book
+                    artworkData = nil
+                }, cancel: { artworkData = nil })
+            }
+        }
         .alert("Unable to complete action", isPresented: Binding(
             get: { error != nil }, set: { if !$0 { error = nil } }
         )) { Button("OK") { error = nil } } message: { Text(error ?? "") }
@@ -277,6 +287,18 @@ struct LibraryView: View {
             catch { self.error = error.localizedDescription }
         }
         load()
+    }
+
+    private func chooseArtwork() {
+        let panel = NSOpenPanel()
+        panel.title = "Choose Cover Artwork"
+        panel.allowedContentTypes = [.png, .jpeg]
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            let data = try Data(contentsOf: url)
+            _ = try EPUB.coverImage(data)
+            artworkData = data
+        } catch { self.error = error.localizedDescription }
     }
 }
 

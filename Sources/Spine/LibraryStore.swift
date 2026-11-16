@@ -93,6 +93,15 @@ struct LibraryStore {
         return updated
     }
 
+    func replaceCover(_ data: Data, for book: Book) throws {
+        try validate()
+        let url = file(book.id)
+        try checkLocation(url)
+        let epub = try EPUB(url); defer { epub.clean() }
+        try epub.replaceCover(data)
+        try epub.save(epub.book(id: book.id), to: url)
+    }
+
     func load() throws -> [Book] {
         try validate()
         let keys: [URLResourceKey] = [.isRegularFileKey, .isSymbolicLinkKey]
