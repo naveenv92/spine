@@ -5,6 +5,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         // SwiftPM launches a bare executable, so opt into normal Mac app activation.
         NSApp.setActivationPolicy(.regular)
+        if let url = Bundle.module.url(forResource: "AppIcon", withExtension: "png") {
+            NSApp.applicationIconImage = NSImage(contentsOf: url)
+        }
         NSApp.activate(ignoringOtherApps: true)
     }
 }
