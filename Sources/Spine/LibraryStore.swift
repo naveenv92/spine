@@ -129,19 +129,45 @@ struct LibraryStore {
         try epub.save(epub.book(id: book.id), to: url)
     }
 
+    static func epubFiles(in selections: [URL], excluding library: URL? = nil) throws -> [URL] {
+        let keys: Set<URLResourceKey> = [.isRegularFileKey, .isDirectoryKey, .isSymbolicLinkKey]
+        let excluded = library?.resolvingSymlinksInPath().standardizedFileURL.path
+        var result = Set<URL>()
+        func isExcluded(_ url: URL) -> Bool {
+            guard let excluded else { return false }
+            let path = url.resolvingSymlinksInPath().standardizedFileURL.path
+            return path == excluded || path.hasPrefix(excluded == "/" ? "/" : excluded + "/")
+        }
+        func add(_ url: URL, values: URLResourceValues) {
+            if values.isSymbolicLink != true, values.isRegularFile == true, url.pathExtension.lowercased() == "epub" {
+                result.insert(url.resolvingSymlinksInPath().standardizedFileURL)
+            }
+        }
+        for selection in selections {
+            guard !isExcluded(selection) else { continue }
+            let values = try selection.resourceValues(forKeys: keys)
+            guard values.isSymbolicLink != true else { continue }
+            if values.isDirectory != true { add(selection, values: values); continue }
+            var scanError: Error?
+            guard let files = FileManager.default.enumerator(at: selection, includingPropertiesForKeys: Array(keys),
+                options: [.skipsHiddenFiles], errorHandler: { _, error in scanError = error; return false }) else {
+                throw CocoaError(.fileReadUnknown)
+            }
+            for case let url as URL in files {
+                if isExcluded(url) { files.skipDescendants(); continue }
+                let values = try url.resourceValues(forKeys: keys)
+                if values.isSymbolicLink == true { files.skipDescendants(); continue }
+                add(url, values: values)
+            }
+            if let scanError { throw scanError }
+        }
+        return result.sorted { $0.path < $1.path }
+    }
+
     func load() throws -> [Book] {
         try validate()
-        let keys: [URLResourceKey] = [.isRegularFileKey, .isSymbolicLinkKey]
-        var scanError: Error?
-        guard let files = FileManager.default.enumerator(at: root, includingPropertiesForKeys: keys,
-            options: [.skipsHiddenFiles], errorHandler: { _, error in scanError = error; return false }) else {
-            throw CocoaError(.fileReadUnknown)
-        }
         var books: [Book] = []
-        for case let url as URL in files {
-            let values = try url.resourceValues(forKeys: Set(keys))
-            guard values.isSymbolicLink != true, values.isRegularFile == true,
-                  url.pathExtension.lowercased() == "epub" else { continue }
+        for url in try Self.epubFiles(in: [root]) {
             try checkLocation(url)
             guard let epub = try? EPUB(url) else { continue }; defer { epub.clean() }
             let id = id(for: url)
@@ -153,7 +179,6 @@ struct LibraryStore {
                 books.append(book)
             }
         }
-        if let scanError { throw scanError }
         return books
     }
 

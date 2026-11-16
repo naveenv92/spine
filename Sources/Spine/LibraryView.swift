@@ -287,12 +287,25 @@ struct LibraryView: View {
 
     private func importBooks() {
         let panel = NSOpenPanel(); panel.allowsMultipleSelection = true; panel.allowedContentTypes = [UTType(filenameExtension: "epub")!]
+        panel.title = "Import EPUB Files or Folders"
+        panel.canChooseDirectories = true
         guard panel.runModal() == .OK else { return }
-        for url in panel.urls {
-            do { try store.importBook(url) }
-            catch { self.error = error.localizedDescription }
+        do {
+            let files = try LibraryStore.epubFiles(in: panel.urls, excluding: store.root)
+            guard !files.isEmpty else {
+                error = "No EPUB files found outside the current library."
+                return
+            }
+            var failures: [String] = []
+            for url in files {
+                do { try store.importBook(url) }
+                catch { failures.append("\(url.lastPathComponent): \(error.localizedDescription)") }
+            }
+            load()
+            if !failures.isEmpty { error = "Some books could not be imported:\n" + failures.joined(separator: "\n") }
+        } catch {
+            self.error = error.localizedDescription
         }
-        load()
     }
 
     private func chooseArtwork() {

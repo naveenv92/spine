@@ -36,6 +36,43 @@ final class LibraryStoreTests: XCTestCase {
         XCTAssertLessThanOrEqual(LibraryStore.bookName(String(repeating: "本", count: 300), fallback: "unknown").utf8.count, 180)
     }
 
+    func testFolderImportDiscoversNestedEPUBsWithoutHiddenLinksOrDestination() throws {
+        let directory = try temporaryDirectory()
+        let source = try epub(in: directory)
+        let input = directory.appendingPathComponent("input")
+        let nested = input.appendingPathComponent("nested/deeper")
+        let root = input.appendingPathComponent("managed-library")
+        let hidden = input.appendingPathComponent(".hidden")
+        let outside = directory.appendingPathComponent("outside")
+        for folder in [nested, root, hidden, outside] {
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        }
+        let first = input.appendingPathComponent("first.epub")
+        let second = nested.appendingPathComponent("second.EPUB")
+        for url in [first, second, hidden.appendingPathComponent("hidden.epub"),
+                    root.appendingPathComponent("already-managed.epub"), outside.appendingPathComponent("external.epub")] {
+            try FileManager.default.copyItem(at: source, to: url)
+        }
+        try Data().write(to: input.appendingPathComponent("notes.txt"))
+        try Data().write(to: input.appendingPathComponent(".hidden.epub"))
+        try FileManager.default.createSymbolicLink(at: input.appendingPathComponent("link.epub"), withDestinationURL: source)
+        try FileManager.default.createSymbolicLink(at: input.appendingPathComponent("linked-folder"), withDestinationURL: outside)
+        let files = try LibraryStore.epubFiles(in: [input, nested, first], excluding: root)
+        XCTAssertEqual(Set(files.map(\.lastPathComponent)), Set(["first.epub", "second.EPUB"]))
+        let store = LibraryStore(root: root)
+        let imported = try files.map { try store.importBook($0) }
+        XCTAssertEqual(Set(imported.map(\.id)), Set(["Susanna Clarke/piranesi.epub", "Susanna Clarke/piranesi-2.epub"]))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: first.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: second.path))
+        XCTAssertEqual(try LibraryStore.epubFiles(in: [root], excluding: root), [])
+    }
+
+    func testFolderDiscoveryHandlesEmptyAndMissingSelections() throws {
+        let directory = try temporaryDirectory()
+        XCTAssertEqual(try LibraryStore.epubFiles(in: [directory]), [])
+        XCTAssertThrowsError(try LibraryStore.epubFiles(in: [directory.appendingPathComponent("missing")]))
+    }
+
     func testAuthorFoldersUseSafeTitleCaseNames() {
         XCTAssertEqual(LibraryStore.authorFolder("sUSANNA CLARKE"), "Susanna Clarke")
         XCTAssertEqual(LibraryStore.authorFolder("  J. R. R.   TOLKIEN  "), "J. R. R. Tolkien")
