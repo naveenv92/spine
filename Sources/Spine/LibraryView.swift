@@ -9,16 +9,19 @@ struct LibraryView: View {
     @State private var listView = false
     @State private var error: String?
     private let accent = Color(red: 0.48, green: 0.37, blue: 0.92)
-    // Keep the original library location so existing imports remain available.
-    private let root = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("MinimalBooks")
-    private func file(_ id: String) -> URL { root.appendingPathComponent(id + ".epub") }
+    @AppStorage("libraryFolder") private var libraryFolder = ""
+    private var store: LibraryStore { LibraryStore(root: URL(fileURLWithPath: libraryFolder, isDirectory: true)) }
+    private let previousLibrary = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("MinimalBooks")
+    private func file(_ id: String) -> URL { store.file(id) }
 
     var body: some View {
         HStack(spacing: 0) {
             sidebar
             Divider()
             Group {
-                if let book = selected {
+                if libraryFolder.isEmpty {
+                    setup
+                } else if let book = selected {
                     BookDetails(book: book, cover: cover(book), back: { selected = nil }, save: { updated in
                         do {
                             let epub = try EPUB(file(updated.id)); defer { epub.clean() }
@@ -41,7 +44,7 @@ struct LibraryView: View {
         .frame(minWidth: 850, minHeight: 580)
         .preferredColorScheme(.dark)
         .tint(accent)
-        .task { load() }
+        .onChange(of: libraryFolder, initial: true) { load() }
         .alert("Unable to complete action", isPresented: Binding(
             get: { error != nil }, set: { if !$0 { error = nil } }
         )) { Button("OK") { error = nil } } message: { Text(error ?? "") }
@@ -83,6 +86,13 @@ struct LibraryView: View {
                     .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
             }
             Spacer()
+            if !libraryFolder.isEmpty {
+                Button(action: chooseLibrary) {
+                    Label("Library Folder…", systemImage: "folder")
+                }.buttonStyle(.plain).foregroundStyle(.secondary)
+                    .help(libraryFolder)
+                    .disabled(selected != nil)
+            }
         }.padding(20).frame(width: 190).frame(maxHeight: .infinity)
             .background(Color(red: 0.065, green: 0.07, blue: 0.075))
     }
@@ -181,7 +191,7 @@ struct LibraryView: View {
     private func cover(_ book: Book) -> some View {
         ZStack {
             RoundedRectangle(cornerRadius: 10).fill(.white.opacity(0.06))
-            if let image = NSImage(contentsOf: root.appendingPathComponent(book.id + ".cover")) {
+            if let image = NSImage(contentsOf: store.cover(book.id)) {
                 Image(nsImage: image).resizable().scaledToFit()
             } else {
                 Image(systemName: "book.closed").font(.system(size: 38)).foregroundStyle(accent)
@@ -191,26 +201,56 @@ struct LibraryView: View {
             .overlay { RoundedRectangle(cornerRadius: 10).strokeBorder(.white.opacity(0.14)) }
     }
 
-    private func load() {
-        do {
-            try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-            books = try FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil).filter { $0.pathExtension == "epub" }.compactMap { url in
-                guard let epub = try? EPUB(url) else { return nil }; defer { epub.clean() }
-                let id = url.deletingPathExtension().lastPathComponent
-                if let cover = try? epub.cover() { try? cover.write(to: root.appendingPathComponent(id + ".cover")) }
-                return try? epub.book(id: id)
+    private var setup: some View {
+        ContentUnavailableView {
+            Label("Choose your library folder", systemImage: "folder.badge.plus")
+        } description: {
+            Text("Spine copies imported books into this folder, organized by author and title. Your original files stay where they are.")
+        } actions: {
+            Button("Choose Library Folder…", action: chooseLibrary).buttonStyle(.borderedProminent).controlSize(.large)
+            if FileManager.default.fileExists(atPath: previousLibrary.path) {
+                Button("Use Previous Library") {
+                    setLibrary(previousLibrary)
+                }
             }
+        }.frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func chooseLibrary() {
+        let panel = NSOpenPanel()
+        panel.title = "Choose Your Library Folder"
+        panel.prompt = "Use Library Folder"
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.canCreateDirectories = true
+        panel.directoryURL = libraryFolder.isEmpty ? nil : store.root
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        setLibrary(url)
+    }
+
+    private func setLibrary(_ url: URL) {
+        do {
+            try LibraryStore(root: url).validate()
+            let path = url.standardizedFileURL.path
+            if libraryFolder == path { load() }
+            else { libraryFolder = path }
         } catch { self.error = error.localizedDescription }
+    }
+
+    private func load() {
+        selected = nil
+        books = []
+        guard !libraryFolder.isEmpty else { return }
+        do { books = try store.load() }
+        catch { self.error = error.localizedDescription }
     }
 
     private func importBooks() {
         let panel = NSOpenPanel(); panel.allowsMultipleSelection = true; panel.allowedContentTypes = [UTType(filenameExtension: "epub")!]
         guard panel.runModal() == .OK else { return }
         for url in panel.urls {
-            do {
-                let epub = try EPUB(url); defer { epub.clean() }; _ = try epub.book(id: "")
-                try FileManager.default.copyItem(at: url, to: file(UUID().uuidString))
-            } catch { self.error = error.localizedDescription }
+            do { try store.importBook(url) }
+            catch { self.error = error.localizedDescription }
         }
         load()
     }
