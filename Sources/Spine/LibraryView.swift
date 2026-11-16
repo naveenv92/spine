@@ -27,7 +27,7 @@ struct LibraryView: View {
                     BookDetails(book: book, cover: cover(book), back: { selected = nil }, save: { updated in
                         do {
                             let saved = try store.save(updated)
-                            load(); selected = saved
+                            load(selecting: saved)
                             return true
                         } catch {
                             self.error = error.localizedDescription
@@ -50,12 +50,16 @@ struct LibraryView: View {
         .frame(minWidth: 850, minHeight: 580)
         .preferredColorScheme(.dark)
         .tint(accent)
-        .onChange(of: libraryFolder, initial: true) { load() }
+        .onChange(of: libraryFolder, initial: true) {
+            selected = nil
+            books = []
+            load()
+        }
         .sheet(isPresented: Binding(get: { artworkData != nil }, set: { if !$0 { artworkData = nil } })) {
             if let data = artworkData, let book = selected {
                 ArtworkEditor(data: data, save: {
                     try store.replaceCover(data, for: book)
-                    load(); selected = book
+                    load(selecting: book)
                     artworkData = nil
                 }, cancel: { artworkData = nil })
             }
@@ -271,11 +275,13 @@ struct LibraryView: View {
         } catch { self.error = error.localizedDescription }
     }
 
-    private func load() {
-        selected = nil
-        books = []
+    private func load(selecting book: Book? = nil) {
         guard !libraryFolder.isEmpty else { return }
-        do { books = try store.load() }
+        do {
+            let refreshed = try store.load()
+            books = refreshed
+            selected = book
+        }
         catch { self.error = error.localizedDescription }
     }
 
