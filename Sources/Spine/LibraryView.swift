@@ -242,29 +242,40 @@ struct LibraryView: View {
             } else if visible.isEmpty {
                 ContentUnavailableView.search(text: search).frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                ScrollView {
-                    if listView {
-                        LazyVStack(spacing: 12) {
-                            ForEach(visible) { book in
-                                libraryItem(book) {
-                                    HStack(spacing: 20) {
-                                        cover(book).frame(width: 52, height: 74)
-                                        bookText(book)
-                                        Spacer()
-                                    }.padding(12).padding(.trailing, 44).contentShape(Rectangle())
-                                        .background(.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 10))
+                GeometryReader { geometry in
+                    ScrollView {
+                        Group {
+                            if listView {
+                                LazyVStack(spacing: 12) {
+                                    ForEach(visible) { book in
+                                        libraryItem(book) {
+                                            HStack(spacing: 20) {
+                                                cover(book).frame(width: 52, height: 74)
+                                                bookText(book)
+                                                Spacer()
+                                            }.padding(12).padding(.trailing, 44).contentShape(Rectangle())
+                                                .background(.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 10))
+                                        }
+                                    }
+                                }
+                            } else {
+                                LazyVGrid(columns: [GridItem(.adaptive(minimum: 160, maximum: 230), spacing: 28, alignment: .top)], alignment: .leading, spacing: 28) {
+                                    ForEach(visible) { book in
+                                        libraryItem(book) {
+                                            VStack(alignment: .leading, spacing: 12) {
+                                                cover(book).aspectRatio(0.7, contentMode: .fit)
+                                                bookText(book)
+                                            }.contentShape(Rectangle())
+                                        }
+                                    }
                                 }
                             }
                         }
-                    } else {
-                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 160, maximum: 230), spacing: 28, alignment: .top)], alignment: .leading, spacing: 28) {
-                            ForEach(visible) { book in
-                                libraryItem(book) {
-                                    VStack(alignment: .leading, spacing: 12) {
-                                        cover(book).aspectRatio(0.7, contentMode: .fit)
-                                        bookText(book)
-                                    }.contentShape(Rectangle())
-                                }
+                        .frame(maxWidth: .infinity, minHeight: geometry.size.height, alignment: .topLeading)
+                        .background {
+                            Color.clear.contentShape(Rectangle()).onTapGesture {
+                                selection = LibrarySelection()
+                                libraryFocused = true
                             }
                         }
                     }
