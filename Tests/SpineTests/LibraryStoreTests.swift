@@ -87,6 +87,9 @@ final class LibraryStoreTests: XCTestCase {
         XCTAssertEqual(LibraryStore.authorFolder("josé saramago"), "José Saramago")
         XCTAssertEqual(LibraryStore.authorFolder("../susanna/clarke:"), "Susanna Clarke")
         XCTAssertEqual(LibraryStore.authorFolder("..."), "Unknown Author")
+        XCTAssertEqual(LibraryStore.authorFolder("terry pratchett; Neil Gaiman"), "Terry Pratchett")
+        XCTAssertEqual(LibraryStore.authorFolder(" ; ; Neil Gaiman; Terry Pratchett"), "Neil Gaiman")
+        XCTAssertEqual(LibraryStore.authorFolder(" ; ; "), "Unknown Author")
         XCTAssertLessThanOrEqual(LibraryStore.authorFolder(String(repeating: "本", count: 300)).utf8.count, 180)
     }
 
@@ -427,5 +430,25 @@ final class LibraryStoreTests: XCTestCase {
         XCTAssertEqual(cold.count, 71)
         XCTAssertEqual(warm, cold)
         print("71-book cache benchmark: cold \(coldTime)s, warm \(warmTime)s")
+    }
+
+    func testMultiAuthorBooksUseFirstAuthorFolderAndPreserveAllMetadata() throws {
+        let directory = try temporaryDirectory()
+        let source = try epub(in: directory, title: "Good Omens", author: "Terry Pratchett; Neil Gaiman")
+        let root = directory.appendingPathComponent("library")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let store = LibraryStore(root: root)
+        var book = try store.importBook(source)
+        XCTAssertEqual(book.id, "Terry Pratchett/good-omens.epub")
+        XCTAssertEqual(try store.load().first?.author, "Terry Pratchett; Neil Gaiman")
+        book.author = "Terry Pratchett; Another Author"
+        book = try store.save(book)
+        XCTAssertEqual(book.id, "Terry Pratchett/good-omens.epub")
+        book.author = "Neil Gaiman; Terry Pratchett"
+        book = try store.save(book)
+        XCTAssertEqual(book.id, "Neil Gaiman/good-omens.epub")
+        let saved = try EPUB(store.file(book.id)); defer { saved.clean() }
+        XCTAssertEqual(try saved.book(id: book.id).author, "Neil Gaiman; Terry Pratchett")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: root.appendingPathComponent("Terry Pratchett").path))
     }
 }

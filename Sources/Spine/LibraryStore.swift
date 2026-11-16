@@ -32,8 +32,9 @@ struct LibraryStore {
     }
 
     static func authorFolder(_ text: String) -> String {
+        let author = text.components(separatedBy: ";").first { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty } ?? ""
         let invalid = CharacterSet.controlCharacters.union(CharacterSet(charactersIn: "/:\\"))
-        var name = text.components(separatedBy: invalid).joined(separator: " ")
+        var name = author.components(separatedBy: invalid).joined(separator: " ")
             .split(whereSeparator: \.isWhitespace).joined(separator: " ")
             .trimmingCharacters(in: CharacterSet(charactersIn: ". "))
             .capitalized(with: Locale(identifier: "en_US_POSIX"))
