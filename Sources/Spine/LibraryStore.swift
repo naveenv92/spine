@@ -37,7 +37,10 @@ struct LibraryStore {
         var name = author.components(separatedBy: invalid).joined(separator: " ")
             .split(whereSeparator: \.isWhitespace).joined(separator: " ")
             .trimmingCharacters(in: CharacterSet(charactersIn: ". "))
-            .capitalized(with: Locale(identifier: "en_US_POSIX"))
+            .split(separator: " ").map { word in
+                if word.first?.isUppercase == true && word.contains(where: \.isLowercase) { return String(word) }
+                return String(word).capitalized(with: Locale(identifier: "en_US_POSIX"))
+            }.joined(separator: " ")
         while name.utf8.count > 180 { name.removeLast() }
         return name.rangeOfCharacter(from: .alphanumerics) == nil ? "Unknown Author" : name
     }
