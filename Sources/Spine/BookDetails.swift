@@ -13,6 +13,7 @@ struct BookDetails<Cover: View>: View {
     @State private var isEditing = false
     @State private var editingDescription = false
     @State private var confirmDiscard = false
+    @State private var confirmSave = false
     @State private var descriptionHeight: CGFloat = 1
 
     var body: some View {
@@ -97,9 +98,16 @@ struct BookDetails<Cover: View>: View {
 
     @ViewBuilder private var actions: some View {
         if isEditing {
-            Button("Save Changes") {
-                if save(book) { isEditing = false; editingDescription = false; original = nil }
-            }.buttonStyle(.borderedProminent).keyboardShortcut("s")
+            Button("Save Changes") { confirmSave = true }
+                .buttonStyle(.borderedProminent).keyboardShortcut("s")
+                .confirmationDialog("Save metadata changes?", isPresented: $confirmSave, titleVisibility: .visible) {
+                    Button("Save Changes", role: .destructive) {
+                        if save(book) { isEditing = false; editingDescription = false; original = nil }
+                    }
+                    Button("Keep Editing", role: .cancel) {}
+                } message: {
+                    Text("This will replace the book’s metadata and update its folder and filename if needed. No backup will be kept. This cannot be undone in Spine.")
+                }
             Button("Cancel") {
                 if let original { book = original }
                 isEditing = false; editingDescription = false; original = nil

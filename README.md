@@ -40,22 +40,24 @@ Importing copies each EPUB into your selected folder without changing the source
 
 ```text
 Your Library/
-└── susanna_clarke/
-    └── piranesi/
-        ├── piranesi.epub
-        ├── piranesi.cover
-        └── piranesi.epub.backup
+├── Susanna Clarke/
+│   ├── piranesi.epub
+│   └── another_book.epub
+└── .spine/
+    └── Susanna Clarke/
+        └── piranesi.cover
 ```
 
-Folder and file names use lowercase snake case derived from the EPUB's author and title metadata. Accents are folded, punctuation becomes separators, and long names are shortened. Missing names use `unknown_author` and `untitled`. Multiple authors are combined into one author folder name. Existing book folders get a numbered suffix, such as `piranesi_2`, rather than being overwritten; repeated imports create additional copies.
+Author folders use Title Case with spaces, preserving accents and safe punctuation. This changes folder names, not the author metadata inside the EPUB. Book filenames use lowercase snake case, with accents folded and punctuation replaced by separators. Long names are shortened. Missing names use `Unknown Author` and `untitled`. Multiple authors are combined into one author folder name. Existing filenames get a numbered suffix, such as `piranesi_2.epub`, rather than being overwritten; repeated imports create additional copies.
 
-The `.cover` and `.backup` files appear as needed:
+Spine stores cover caches in the hidden `.spine` folder, mirroring the EPUB's relative path. Finder hides dot folders by default; press **⌘⇧.** to show them. Copy the author folders when transferring books to an e-reader. The EPUB itself contains the author/title metadata and embedded cover art, so the e-reader does not need `.spine`.
+
+The `.cover` files appear inside `.spine` as needed:
 
 | File | Purpose |
 | --- | --- |
 | `.epub` | The managed book, including its embedded cover image. |
 | `.cover` | An extracted cover-image cache for thumbnails. Deleting it is safe; Spine recreates it when the library loads. |
-| `.epub.backup` | The EPUB before its most recent metadata or artwork save. This is one previous version, not a complete history. |
 
 Existing EPUBs are discovered where they are. Importing and saving changed author/title metadata organize files; choosing a folder does not reorganize its existing contents.
 
@@ -69,13 +71,13 @@ Search by title or author, sort by either field, and switch between grid and lis
 
 Choose **Edit Metadata** to change the title, authors, publisher, language, tags, or description. Separate multiple authors and tags with semicolons. Descriptions render HTML; enable **Edit HTML source** to change their markup.
 
-**Save Changes** writes the metadata into the EPUB and keeps a pre-edit backup. If the author or title changes its normalized name, Spine also updates the folders and EPUB filename, carries over the cover cache, and removes empty old folders. Collisions use numbered folders. Shared folders and unrelated files stay in place. **Back to Library** asks before discarding unsaved edits.
+**Save Changes** opens a confirmation dialog before writing metadata into the EPUB. Confirming overwrites the metadata without keeping a backup; it cannot be undone in Spine. Cancelling the dialog keeps your draft available for editing. If the author or title changes its normalized name, Spine also updates the author folder and EPUB filename, carries over the hidden cover cache, and removes empty old folders. Collisions use numbered filenames. Shared folders and unrelated files stay in place. **Back to Library** asks before discarding unsaved edits.
 
 ### Replace cover artwork
 
-Choose **Edit Artwork**, select a PNG or JPEG, review the preview, then choose **Save Artwork**. Finish or cancel metadata editing first.
+Choose **Edit Artwork**, select a PNG or JPEG, review the preview, then choose **Save Artwork** and confirm the replacement. Finish or cancel metadata editing first.
 
-Spine embeds the replacement inside the EPUB, retains a pre-edit backup, and refreshes the thumbnail cache. Existing JPEG, PNG, and GIF covers keep their image path and format so existing cover-page references continue to work. Books without cover metadata receive a new cover image entry.
+Spine embeds the replacement inside the EPUB and refreshes the thumbnail cache. The confirmation explains that no backup is kept and the replacement cannot be undone in Spine. Existing JPEG, PNG, and GIF covers keep their image path and format so existing cover-page references continue to work. Books without cover metadata receive a new cover image entry.
 
 SVG cover replacement and creating a new cover page in the book's reading order are not supported.
 
@@ -83,7 +85,7 @@ SVG cover replacement and creating a new cover page in the book's reading order 
 
 Right-click a book in the grid or list and choose **Remove book**, or choose **Remove Book** on its details page. Both require confirmation before moving files to macOS Trash.
 
-Removal includes the EPUB, cover cache, backup, and empty book/author folders. Shared folders, unrelated files, and the library root remain. A source file copied from outside the library during import is unaffected.
+Removal includes the EPUB, its hidden cover cache, and empty author/metadata folders. Shared folders, unrelated files, and the library root remain. A source file copied from outside the library during import is unaffected.
 
 ## Reset for debugging
 
@@ -113,11 +115,11 @@ Run the test suite with:
 swift test
 ```
 
-Tests cover metadata saving, organized imports, folder renaming, duplicate names, removal, backups, EPUB 2/3 cover editing, image validation, and description sizing.
+Tests cover metadata saving, organized imports, folder renaming, duplicate names, removal, saving without backups, EPUB 2/3 cover editing, image validation, and description sizing.
 
 Library scanning and EPUB processing run synchronously, so large libraries may pause the interface. Folder/drop import, automatic deduplication, series editing, and crash recovery are not implemented. Spine uses the system `zip` and `unzip` tools; archive expansion limits and archive symlink defenses remain incomplete.
 
-Compatibility with a broader set of real EPUBs, EPUBCheck validation, and manual UI testing remain necessary. Use an independent backup rather than relying only on the single pre-edit `.backup` file.
+Compatibility with a broader set of real EPUBs, EPUBCheck validation, and manual UI testing remain necessary. Spine does not create EPUB backups. Keep an independent copy if you need to restore earlier versions.
 
 ## License
 

@@ -45,7 +45,6 @@ final class CoverTests: XCTestCase {
     func testExistingRasterCoversKeepReferencesAndUseCorrectEncoding() throws {
         for (version, type, expected) in [("2.0", "image/jpeg", "public.jpeg"), ("3.0", "image/png", "public.png"), ("3.0", "image/gif", "com.compuserve.gif")] {
             let url = try fixture(version: version, type: type)
-            let original = try Data(contentsOf: url)
             let epub = try EPUB(url); defer { epub.clean() }
             let page = try Data(contentsOf: epub.directory.appendingPathComponent("OEBPS/cover.xhtml"))
             let metadata = try epub.book(id: "book.epub")
@@ -60,7 +59,8 @@ final class CoverTests: XCTestCase {
             XCTAssertGreaterThan(try XCTUnwrap(bitmap.colorAt(x: 1, y: 1)?.usingColorSpace(.deviceRGB)).redComponent, 0.8)
             XCTAssertEqual(try Data(contentsOf: saved.directory.appendingPathComponent("OEBPS/cover.xhtml")), page)
             XCTAssertEqual(try saved.book(id: metadata.id), metadata)
-            XCTAssertEqual(try Data(contentsOf: url.appendingPathExtension("backup")), original)
+            XCTAssertFalse(FileManager.default.fileExists(atPath: url.appendingPathExtension("backup").path))
+            XCTAssertFalse(FileManager.default.fileExists(atPath: url.deletingLastPathComponent().appendingPathComponent(".spine").path))
         }
     }
 

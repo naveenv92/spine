@@ -154,6 +154,6 @@ struct EPUB {
         try Self.command("/usr/bin/zip", ["-q", "-r", temporary.path, ".", "-x", "mimetype"], at: directory)
         let check = try EPUB(temporary); defer { check.clean() }
         _ = try check.book(id: book.id)
-        _ = try FileManager.default.replaceItemAt(destination, withItemAt: temporary, backupItemName: destination.lastPathComponent + ".backup", options: .withoutDeletingBackupItem)
+        _ = try FileManager.default.replaceItemAt(destination, withItemAt: temporary)
     }
 }
