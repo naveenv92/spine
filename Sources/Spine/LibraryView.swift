@@ -1,0 +1,238 @@
+import SwiftUI
+import UniformTypeIdentifiers
+
+struct LibraryView: View {
+    @State private var books: [Book] = []
+    @State private var selected: Book?
+    @State private var search = ""
+    @State private var sortByAuthor = false
+    @State private var listView = false
+    @State private var error: String?
+    private let accent = Color(red: 0.48, green: 0.37, blue: 0.92)
+    // Keep the original library location so existing imports remain available.
+    private let root = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("MinimalBooks")
+    private func file(_ id: String) -> URL { root.appendingPathComponent(id + ".epub") }
+
+    var body: some View {
+        HStack(spacing: 0) {
+            sidebar
+            Divider()
+            VStack(alignment: .leading, spacing: 24) {
+                header
+                HStack {
+                    Text("All Books").font(.headline).padding(.horizontal, 14).padding(.bottom, 14)
+                        .overlay(alignment: .bottom) { Capsule().fill(accent).frame(height: 3) }
+                    Spacer()
+                    Picker("Sort by", selection: $sortByAuthor) {
+                        Text("Title").tag(false)
+                        Text("Author").tag(true)
+                    }.frame(width: 160)
+                    Picker("Layout", selection: $listView) {
+                        Image(systemName: "square.grid.2x2").tag(false)
+                        Image(systemName: "list.bullet").tag(true)
+                    }.pickerStyle(.segmented).frame(width: 90)
+                }
+                .overlay(alignment: .bottom) { Divider().offset(y: 1) }
+                collection
+            }.padding(32).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .background(Color(red: 0.045, green: 0.05, blue: 0.055))
+        }
+        .frame(minWidth: 850, minHeight: 580)
+        .preferredColorScheme(.dark)
+        .tint(accent)
+        .task { load() }
+        .sheet(item: $selected) { book in
+            VStack(spacing: 0) {
+                HStack {
+                    Text("Book Details").font(.title2.bold())
+                    Spacer()
+                    Button("Done") { selected = nil }.keyboardShortcut(.cancelAction)
+                }.padding()
+                Divider()
+                Editor(book: book, save: { updated in
+                    do {
+                        let epub = try EPUB(file(updated.id)); defer { epub.clean() }
+                        try epub.save(updated, to: file(updated.id)); load()
+                        return true
+                    } catch { self.error = error.localizedDescription; return false }
+                }, open: { NSWorkspace.shared.open(file(book.id)) }, export: {
+                    let panel = NSSavePanel(); panel.nameFieldStringValue = book.title + ".epub"
+                    if panel.runModal() == .OK, let url = panel.url {
+                        do { try FileManager.default.copyItem(at: file(book.id), to: url) }
+                        catch { self.error = error.localizedDescription }
+                    }
+                }).id(book.id)
+            }.frame(width: 650, height: 650)
+                .alert("Unable to complete action", isPresented: errorPresented) {
+                    Button("OK") { error = nil }
+                } message: { Text(error ?? "") }
+        }
+        .alert("Unable to complete action", isPresented: Binding(
+            get: { error != nil && selected == nil }, set: { if !$0 { error = nil } }
+        )) { Button("OK") { error = nil } } message: { Text(error ?? "") }
+    }
+
+    private var errorPresented: Binding<Bool> {
+        Binding(get: { error != nil }, set: { if !$0 { error = nil } })
+    }
+
+    private var sidebar: some View {
+        VStack(alignment: .leading, spacing: 26) {
+            Label("Spine", systemImage: "book.pages").font(.title2.bold()).padding(.bottom, 12)
+            Label("Library", systemImage: "book").font(.headline)
+                .frame(maxWidth: .infinity, alignment: .leading).padding(14)
+                .background(.white.opacity(0.1), in: RoundedRectangle(cornerRadius: 10))
+            Divider()
+            Text("MY LIBRARY").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+            HStack {
+                Label("All Books", systemImage: "books.vertical")
+                Spacer()
+                Text("\(books.count)").font(.caption.bold()).padding(.horizontal, 8).padding(.vertical, 4)
+                    .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
+            }
+            Spacer()
+            Text("Your next chapter awaits.").font(.caption).foregroundStyle(.secondary)
+        }.padding(20).frame(width: 190).frame(maxHeight: .infinity)
+            .background(Color(red: 0.065, green: 0.07, blue: 0.075))
+    }
+
+    private var header: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .center, spacing: 24) {
+                heading
+                Spacer(minLength: 10)
+                importButton
+                searchField.frame(width: 230)
+            }
+            VStack(alignment: .leading, spacing: 20) {
+                heading
+                HStack(spacing: 20) { importButton; searchField }
+            }
+        }
+    }
+
+    private var heading: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("My Library").font(.system(size: 32, weight: .bold))
+            Text("\(books.count) \(books.count == 1 ? "book" : "books") in your collection")
+                .foregroundStyle(.secondary)
+        }.fixedSize(horizontal: true, vertical: false)
+    }
+
+    private var importButton: some View {
+        Button(action: importBooks) {
+            Label("Import New Books", systemImage: "plus").font(.headline).padding(.horizontal, 10).padding(.vertical, 8)
+        }.buttonStyle(.borderedProminent).controlSize(.large)
+            .keyboardShortcut("o")
+    }
+
+    private var searchField: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+            TextField("Search library…", text: $search).textFieldStyle(.plain)
+                .accessibilityLabel("Search library")
+        }.padding(12).background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 10))
+            .overlay { RoundedRectangle(cornerRadius: 10).strokeBorder(.white.opacity(0.12)) }
+    }
+
+    private var collection: some View {
+        let visible = Book.library(books, search: search, sortByAuthor: sortByAuthor)
+        return Group {
+            if books.isEmpty {
+                ContentUnavailableView {
+                    Label("Your next chapter starts here", systemImage: "books.vertical")
+                } description: {
+                    Text("Import EPUB books to build your personal library.")
+                } actions: { importButton }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if visible.isEmpty {
+                ContentUnavailableView.search(text: search).frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                ScrollView {
+                    if listView {
+                        LazyVStack(spacing: 12) {
+                            ForEach(visible) { book in
+                                Button { selected = book } label: {
+                                    HStack(spacing: 20) {
+                                        cover(book).frame(width: 52, height: 74)
+                                        bookText(book)
+                                        Spacer()
+                                        Image(systemName: "chevron.right").foregroundStyle(.secondary)
+                                    }.padding(12).contentShape(Rectangle())
+                                        .background(.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 10))
+                                }.buttonStyle(.plain)
+                            }
+                        }
+                    } else {
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 160, maximum: 230), spacing: 28, alignment: .top)], alignment: .leading, spacing: 28) {
+                            ForEach(visible) { book in
+                                Button { selected = book } label: {
+                                    VStack(alignment: .leading, spacing: 12) {
+                                        cover(book).aspectRatio(0.7, contentMode: .fit)
+                                        bookText(book)
+                                    }.contentShape(Rectangle())
+                                }.buttonStyle(.plain)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func bookText(_ book: Book) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(book.title).font(.headline).lineLimit(2)
+            Text(book.author).foregroundStyle(.secondary).lineLimit(1)
+        }.frame(maxWidth: .infinity, alignment: .leading).multilineTextAlignment(.leading)
+    }
+
+    private func cover(_ book: Book) -> some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 10).fill(.white.opacity(0.06))
+            if let image = NSImage(contentsOf: root.appendingPathComponent(book.id + ".cover")) {
+                Image(nsImage: image).resizable().scaledToFit()
+            } else {
+                Image(systemName: "book.closed").font(.system(size: 38)).foregroundStyle(accent)
+                    .accessibilityLabel("No cover available")
+            }
+        }.clipShape(RoundedRectangle(cornerRadius: 10))
+            .overlay { RoundedRectangle(cornerRadius: 10).strokeBorder(.white.opacity(0.14)) }
+    }
+
+    private func load() {
+        do {
+            try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+            books = try FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil).filter { $0.pathExtension == "epub" }.compactMap { url in
+                guard let epub = try? EPUB(url) else { return nil }; defer { epub.clean() }
+                let id = url.deletingPathExtension().lastPathComponent
+                if let cover = try? epub.cover() { try? cover.write(to: root.appendingPathComponent(id + ".cover")) }
+                return try? epub.book(id: id)
+            }
+        } catch { self.error = error.localizedDescription }
+    }
+
+    private func importBooks() {
+        let panel = NSOpenPanel(); panel.allowsMultipleSelection = true; panel.allowedContentTypes = [UTType(filenameExtension: "epub")!]
+        guard panel.runModal() == .OK else { return }
+        for url in panel.urls {
+            do {
+                let epub = try EPUB(url); defer { epub.clean() }; _ = try epub.book(id: "")
+                try FileManager.default.copyItem(at: url, to: file(UUID().uuidString))
+            } catch { self.error = error.localizedDescription }
+        }
+        load()
+    }
+}
+
+extension Book {
+    static func library(_ books: [Book], search: String, sortByAuthor: Bool) -> [Book] {
+        books.filter { search.isEmpty || ($0.title + " " + $0.author).localizedCaseInsensitiveContains(search) }
+            .sorted {
+                let left = sortByAuthor ? $0.author : $0.title
+                let right = sortByAuthor ? $1.author : $1.title
+                if left == right { return $0.title.localizedStandardCompare($1.title) == .orderedAscending }
+                return left.localizedStandardCompare(right) == .orderedAscending
+            }
+    }
+}
