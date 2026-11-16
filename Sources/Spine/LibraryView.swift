@@ -10,6 +10,10 @@ struct LibraryView: View {
     @State private var error: String?
     @State private var bookToRemove: Book?
     @State private var artworkData: Data?
+    @State private var isImporting = false
+    @State private var importTotal: Int?
+    @State private var importCompleted = 0
+    @State private var importStatus = ""
     private let accent = Color(red: 0.48, green: 0.37, blue: 0.92)
     @AppStorage("libraryFolder") private var libraryFolder = ""
     private var store: LibraryStore { LibraryStore(root: URL(fileURLWithPath: libraryFolder, isDirectory: true)) }
@@ -63,6 +67,19 @@ struct LibraryView: View {
                     artworkData = nil
                 }, cancel: { artworkData = nil })
             }
+        }
+        .sheet(isPresented: $isImporting) {
+            VStack(spacing: 18) {
+                Text("Importing Books").font(.title2.bold())
+                if let total = importTotal {
+                    ProgressView(value: Double(importCompleted), total: Double(total))
+                    Text("\(importCompleted) of \(total) files processed").monospacedDigit()
+                } else {
+                    ProgressView().controlSize(.small)
+                }
+                Text(importStatus).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+            }.padding(28).frame(width: 380)
+                .interactiveDismissDisabled()
         }
         .alert("Unable to complete action", isPresented: Binding(
             get: { error != nil }, set: { if !$0 { error = nil } }
@@ -286,25 +303,51 @@ struct LibraryView: View {
     }
 
     private func importBooks() {
+        guard !isImporting else { return }
         let panel = NSOpenPanel(); panel.allowsMultipleSelection = true; panel.allowedContentTypes = [UTType(filenameExtension: "epub")!]
         panel.title = "Import EPUB Files or Folders"
         panel.canChooseDirectories = true
         guard panel.runModal() == .OK else { return }
-        do {
-            let files = try LibraryStore.epubFiles(in: panel.urls, excluding: store.root)
-            guard !files.isEmpty else {
-                error = "No EPUB files found outside the current library."
-                return
+        let selections = panel.urls
+        let importStore = store
+        importTotal = nil
+        importCompleted = 0
+        importStatus = "Finding EPUB files…"
+        isImporting = true
+        Task { @MainActor in
+            defer { isImporting = false }
+            do {
+                let files = try await Task.detached(priority: .userInitiated) {
+                    try LibraryStore.epubFiles(in: selections, excluding: importStore.root)
+                }.value
+                guard !files.isEmpty else {
+                    error = "No EPUB files found outside the current library."
+                    return
+                }
+                importTotal = files.count
+                var failures: [String] = []
+                for url in files {
+                    importStatus = url.lastPathComponent
+                    let result = await Task.detached(priority: .userInitiated) {
+                        Result { try importStore.importBook(url) }
+                    }.value
+                    if case .failure(let error) = result {
+                        failures.append("\(url.lastPathComponent): \(error.localizedDescription)")
+                    }
+                    importCompleted += 1
+                    assert(importCompleted <= files.count)
+                }
+                importTotal = nil
+                importStatus = "Refreshing library…"
+                let refreshed = try await Task.detached(priority: .userInitiated) {
+                    try importStore.load()
+                }.value
+                books = refreshed
+                selected = nil
+                if !failures.isEmpty { error = "Some books could not be imported:\n" + failures.joined(separator: "\n") }
+            } catch {
+                self.error = error.localizedDescription
             }
-            var failures: [String] = []
-            for url in files {
-                do { try store.importBook(url) }
-                catch { failures.append("\(url.lastPathComponent): \(error.localizedDescription)") }
-            }
-            load()
-            if !failures.isEmpty { error = "Some books could not be imported:\n" + failures.joined(separator: "\n") }
-        } catch {
-            self.error = error.localizedDescription
         }
     }
 

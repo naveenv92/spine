@@ -61,7 +61,7 @@ The `.cover` files appear inside `.spine` as needed:
 
 Existing EPUBs are discovered where they are. Importing and saving changed author/title metadata organize files; choosing a folder does not reorganize its existing contents.
 
-**Import New Books** accepts EPUB files, folders, or a mixture of both. Folder import searches all subfolders for `.epub` files, including uppercase extensions. Hidden files/folders, symlinks, and the current managed library are skipped. Overlapping selections are scanned once per file, and discovery completes before copying begins. Invalid EPUBs are reported while the remaining books continue importing. Importing the same source again still creates a numbered copy; this is not content-based deduplication.
+**Import New Books** accepts EPUB files, folders, or a mixture of both. Folder import searches all subfolders for `.epub` files, including uppercase extensions. Hidden files/folders, symlinks, and the current managed library are skipped. Overlapping selections are scanned once per file, and discovery completes before copying begins. A progress dialog shows scanning, the processed/total file count, and the final library refresh. This work runs in the background while the dialog prevents conflicting edits. Invalid EPUBs are reported while the remaining books continue importing. Importing the same source again still creates a numbered copy; this is not content-based deduplication.
 
 ## Use Spine
 
@@ -119,7 +119,7 @@ swift test
 
 Tests cover metadata saving, organized imports, folder renaming, duplicate names, removal, saving without backups, EPUB 2/3 cover editing, image validation, and description sizing.
 
-Library scanning and EPUB processing run synchronously, so large libraries and folder imports may pause the interface. Drag-and-drop import, automatic deduplication, series editing, and crash recovery are not implemented. Spine uses the system `zip` and `unzip` tools; archive expansion limits and archive symlink defenses remain incomplete.
+Outside the import workflow, library scanning and EPUB processing run synchronously, so loading large libraries or saving edits may pause the interface. Drag-and-drop import, automatic deduplication, series editing, and crash recovery are not implemented. Spine uses the system `zip` and `unzip` tools; archive expansion limits and archive symlink defenses remain incomplete.
 
 Compatibility with a broader set of real EPUBs, EPUBCheck validation, and manual UI testing remain necessary. Spine does not create EPUB backups. Keep an independent copy if you need to restore earlier versions.
 
