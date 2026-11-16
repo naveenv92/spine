@@ -1,7 +1,14 @@
 import XCTest
+import AppKit
 @testable import Spine
 
 final class LibraryStoreTests: XCTestCase {
+    private func coverImage() throws -> Data {
+        let context = try XCTUnwrap(CGContext(data: nil, width: 2, height: 3, bitsPerComponent: 8, bytesPerRow: 0,
+            space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        context.setFillColor(CGColor(gray: 1, alpha: 1)); context.fill(CGRect(x: 0, y: 0, width: 2, height: 3))
+        return try XCTUnwrap(NSBitmapImageRep(cgImage: XCTUnwrap(context.makeImage())).representation(using: .png, properties: [:]))
+    }
     private func temporaryDirectory() throws -> URL {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -21,6 +28,7 @@ final class LibraryStoreTests: XCTestCase {
         metadata.addChild(XMLElement(name: "dc:title", stringValue: title))
         metadata.addChild(XMLElement(name: "dc:creator", stringValue: author))
         package.addChild(metadata)
+        package.addChild(XMLElement(name: "manifest"))
         try XMLDocument(rootElement: package).xmlData.write(to: source.appendingPathComponent("book.opf"))
         let archive = directory.appendingPathComponent("original.epub")
         try EPUB.command("/usr/bin/zip", ["-q", "-0", archive.path, "mimetype"], at: source)
@@ -215,7 +223,7 @@ final class LibraryStoreTests: XCTestCase {
         }
         XCTAssertTrue(FileManager.default.fileExists(atPath: root.path))
         XCTAssertTrue(try FileManager.default.contentsOfDirectory(atPath: root.path).isEmpty)
-        XCTAssertEqual(trashed.map(\.lastPathComponent), ["piranesi.epub", "piranesi.cover", "Susanna Clarke", "Susanna Clarke", ".spine"])
+        XCTAssertEqual(trashed.map(\.lastPathComponent), ["piranesi.epub", "piranesi.cover", "piranesi.epub.json", "Susanna Clarke", "Susanna Clarke", ".spine"])
         let names = try FileManager.default.contentsOfDirectory(atPath: trash.path)
         XCTAssertTrue(names.contains { $0.hasSuffix("-piranesi.epub") })
         XCTAssertTrue(names.contains { $0.hasSuffix("-piranesi.cover") })
@@ -280,8 +288,8 @@ final class LibraryStoreTests: XCTestCase {
         let store = LibraryStore(root: root)
         var book = try store.importBook(source)
         let originalBytes = try Data(contentsOf: source)
-        let cover = Data("cover image".utf8)
-        try cover.write(to: store.cover(book.id))
+        try store.replaceCover(coverImage(), for: book)
+        let cover = try Data(contentsOf: store.cover(book.id))
         for (author, title, expected) in [
             ("New Author", "Piranesi", "New Author/piranesi.epub"),
             ("New Author", "New Title", "New Author/new-title.epub"),
@@ -359,5 +367,65 @@ final class LibraryStoreTests: XCTestCase {
         XCTAssertThrowsError(try store.save(book))
         XCTAssertEqual(try Data(contentsOf: store.file(book.id)), original)
         XCTAssertTrue(try FileManager.default.contentsOfDirectory(atPath: outside.path).isEmpty)
+    }
+
+    func testMetadataCacheReusesUnchangedBooksAndRecoversFromMissingOrCorruptCache() throws {
+        let directory = try temporaryDirectory()
+        let source = try epub(in: directory)
+        let root = directory.appendingPathComponent("library")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let store = LibraryStore(root: root)
+        let book = try store.importBook(source)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: store.metadata(book.id).path))
+        let sentinel = Date(timeIntervalSince1970: 1000)
+        try FileManager.default.setAttributes([.modificationDate: sentinel], ofItemAtPath: store.metadata(book.id).path)
+        XCTAssertEqual(try store.load(), [book])
+        XCTAssertEqual(try store.metadata(book.id).resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate, sentinel)
+        try Data("invalid JSON".utf8).write(to: store.metadata(book.id))
+        XCTAssertEqual(try store.load(), [book])
+        XCTAssertNoThrow(try JSONSerialization.jsonObject(with: Data(contentsOf: store.metadata(book.id))))
+        try FileManager.default.removeItem(at: store.metadata(book.id))
+        XCTAssertEqual(try store.load(), [book])
+        XCTAssertTrue(FileManager.default.fileExists(atPath: store.metadata(book.id).path))
+    }
+
+    func testCacheRefreshesExternalMetadataEditsAndMissingCovers() throws {
+        let directory = try temporaryDirectory()
+        let source = try epub(in: directory)
+        let root = directory.appendingPathComponent("library")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let store = LibraryStore(root: root)
+        var book = try store.importBook(source)
+        let epub = try EPUB(store.file(book.id)); defer { epub.clean() }
+        book.publisher = "Changed outside Spine"
+        try epub.replaceCover(coverImage())
+        try epub.save(book, to: store.file(book.id))
+        XCTAssertEqual(try store.load(), [book])
+        let cover = try Data(contentsOf: store.cover(book.id))
+        try FileManager.default.removeItem(at: store.cover(book.id))
+        XCTAssertEqual(try store.load(), [book])
+        XCTAssertEqual(try Data(contentsOf: store.cover(book.id)), cover)
+        try FileManager.default.removeItem(at: store.file(book.id))
+        XCTAssertTrue(try store.load().isEmpty)
+    }
+
+    func testWarmLoadPerformanceFor71Books() throws {
+        let directory = try temporaryDirectory()
+        let source = try epub(in: directory)
+        let root = directory.appendingPathComponent("library")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        for index in 0..<71 {
+            try FileManager.default.copyItem(at: source, to: root.appendingPathComponent("book-\(index).epub"))
+        }
+        let store = LibraryStore(root: root)
+        let coldStart = Date()
+        let cold = try store.load()
+        let coldTime = Date().timeIntervalSince(coldStart)
+        let warmStart = Date()
+        let warm = try store.load()
+        let warmTime = Date().timeIntervalSince(warmStart)
+        XCTAssertEqual(cold.count, 71)
+        XCTAssertEqual(warm, cold)
+        print("71-book cache benchmark: cold \(coldTime)s, warm \(warmTime)s")
     }
 }

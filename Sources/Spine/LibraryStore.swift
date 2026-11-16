@@ -5,9 +5,29 @@ struct LibraryStore {
 
     func file(_ id: String) -> URL { root.appendingPathComponent(id) }
     func cover(_ id: String) -> URL { root.appendingPathComponent(".spine").appendingPathComponent(id).deletingPathExtension().appendingPathExtension("cover") }
+    func metadata(_ id: String) -> URL { root.appendingPathComponent(".spine").appendingPathComponent(id).appendingPathExtension("json") }
+
+    private struct CachedBook: Codable {
+        let book: Book
+        let modified: Date
+        let size: Int
+        let hasCover: Bool
+    }
+
+    private func writeCache(_ book: Book, from epub: EPUB) throws {
+        try prepareMetadata(book.id)
+        let attributes = try file(book.id).resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey])
+        guard let modified = attributes.contentModificationDate, let size = attributes.fileSize else { throw CocoaError(.fileReadUnknown) }
+        let artwork = try? epub.cover()
+        if let artwork { try artwork.write(to: cover(book.id), options: .atomic) }
+        else if FileManager.default.fileExists(atPath: cover(book.id).path) { try FileManager.default.removeItem(at: cover(book.id)) }
+        let cached = CachedBook(book: try epub.book(id: book.id), modified: modified, size: size, hasCover: artwork != nil)
+        try JSONEncoder().encode(cached).write(to: metadata(book.id), options: .atomic)
+    }
 
     private func prepareMetadata(_ id: String) throws {
         try checkLocation(cover(id))
+        try checkLocation(metadata(id))
         try FileManager.default.createDirectory(at: cover(id).deletingLastPathComponent(), withIntermediateDirectories: true)
     }
 
@@ -79,6 +99,7 @@ struct LibraryStore {
         book.id = id(for: destination)
         try prepareMetadata(book.id)
         try FileManager.default.copyItem(at: source, to: destination)
+        try? writeCache(book, from: epub)
         return book
     }
 
@@ -93,6 +114,7 @@ struct LibraryStore {
         guard authorChanged || titleChanged else {
             try prepareMetadata(book.id)
             try epub.save(book, to: source)
+            try? writeCache(book, from: epub)
             return book
         }
         try checkLocation(cover(book.id))
@@ -108,6 +130,7 @@ struct LibraryStore {
             }
             try epub.save(updated, to: destination)
             saved = true
+            try? writeCache(updated, from: epub)
             // The updated EPUB is safe before removing old files.
             try remove(book.id) { try FileManager.default.removeItem(at: $0) }
         } catch {
@@ -127,6 +150,7 @@ struct LibraryStore {
         try epub.replaceCover(data)
         try prepareMetadata(book.id)
         try epub.save(epub.book(id: book.id), to: url)
+        try? writeCache(epub.book(id: book.id), from: epub)
     }
 
     static func epubFiles(in selections: [URL], excluding library: URL? = nil) throws -> [URL] {
@@ -169,13 +193,21 @@ struct LibraryStore {
         var books: [Book] = []
         for url in try Self.epubFiles(in: [root]) {
             try checkLocation(url)
-            guard let epub = try? EPUB(url) else { continue }; defer { epub.clean() }
             let id = id(for: url)
+            try checkLocation(metadata(id))
+            try checkLocation(cover(id))
+            let attributes = try url.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey])
+            // shortcut: use size and modification time; add hashes if external tools preserve both.
+            if let data = try? Data(contentsOf: metadata(id)),
+               let cached = try? JSONDecoder().decode(CachedBook.self, from: data), cached.book.id == id,
+               cached.modified == attributes.contentModificationDate, cached.size == attributes.fileSize,
+               !cached.hasCover || FileManager.default.fileExists(atPath: cover(id).path) {
+                books.append(cached.book)
+                continue
+            }
+            guard let epub = try? EPUB(url) else { continue }; defer { epub.clean() }
             if let book = try? epub.book(id: id) {
-                if let data = try? epub.cover() {
-                    try prepareMetadata(id)
-                    try data.write(to: cover(id), options: .atomic)
-                }
+                try? writeCache(book, from: epub)
                 books.append(book)
             }
         }
@@ -192,7 +224,7 @@ struct LibraryStore {
             throw CocoaError(.fileWriteInvalidFileName)
         }
         let manager = FileManager.default
-        let files = [book, cover(id)]
+        let files = [book, cover(id), metadata(id)]
             .filter { manager.fileExists(atPath: $0.path) }
         for url in files { try checkLocation(url) }
         let base = root.resolvingSymlinksInPath().standardizedFileURL

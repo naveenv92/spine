@@ -16,6 +16,7 @@ struct LibraryView: View {
     @State private var bookToRemove: Book?
     @State private var artworkData: Data?
     @State private var isImporting = false
+    @State private var isLoading = false
     @State private var importTotal: Int?
     @State private var importCompleted = 0
     @State private var importStatus = ""
@@ -60,11 +61,21 @@ struct LibraryView: View {
         .frame(minWidth: 850, minHeight: 580)
         .preferredColorScheme(.dark)
         .tint(accent)
-        .onChange(of: libraryFolder, initial: true) {
+        .task(id: libraryFolder) {
             selected = nil
             selection = LibrarySelection()
             books = []
-            load()
+            guard !libraryFolder.isEmpty else { isLoading = false; return }
+            isLoading = true
+            defer { if !Task.isCancelled { isLoading = false } }
+            let readingStore = store
+            do {
+                let refreshed = try await Task.detached(priority: .userInitiated) { try readingStore.load() }.value
+                guard !Task.isCancelled else { return }
+                books = refreshed
+            } catch {
+                if !Task.isCancelled { self.error = error.localizedDescription }
+            }
         }
         .sheet(isPresented: Binding(get: { artworkData != nil }, set: { if !$0 { artworkData = nil } })) {
             if let data = artworkData, let book = selected {
@@ -218,6 +229,7 @@ struct LibraryView: View {
             Label("Import New Books", systemImage: "plus").font(.headline).padding(.horizontal, 10).padding(.vertical, 8)
         }.buttonStyle(.borderedProminent).controlSize(.large)
             .keyboardShortcut("o")
+            .disabled(isLoading)
     }
 
     private var searchField: some View {
@@ -232,7 +244,9 @@ struct LibraryView: View {
     private var collection: some View {
         let visible = Book.library(books, search: search, sortByAuthor: sortByAuthor)
         return Group {
-            if books.isEmpty {
+            if isLoading {
+                ProgressView("Loading library…").frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if books.isEmpty {
                 ContentUnavailableView {
                     Label("Your next chapter starts here", systemImage: "books.vertical")
                 } description: {
@@ -412,7 +426,7 @@ struct LibraryView: View {
     }
 
     private func importBooks() {
-        guard !isImporting else { return }
+        guard !isImporting, !isLoading else { return }
         let panel = NSOpenPanel(); panel.allowsMultipleSelection = true; panel.allowedContentTypes = [UTType(filenameExtension: "epub")!]
         panel.title = "Import EPUB Files or Folders"
         panel.canChooseDirectories = true
