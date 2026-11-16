@@ -4,6 +4,11 @@ import UniformTypeIdentifiers
 struct LibraryView: View {
     @State private var books: [Book] = []
     @State private var selected: Book?
+    @State private var selection = LibrarySelection()
+    @State private var previewBook: Book?
+    @State private var editMetadataOnOpen = false
+    @State private var gridColumnCount = 1
+    @FocusState private var libraryFocused: Bool
     @State private var search = ""
     @State private var sortByAuthor = false
     @State private var listView = false
@@ -31,6 +36,7 @@ struct LibraryView: View {
                     BookDetails(book: book, cover: cover(book), back: { selected = nil }, save: { updated in
                         do {
                             let saved = try store.save(updated)
+                            editMetadataOnOpen = false
                             load(selecting: saved)
                             return true
                         } catch {
@@ -38,13 +44,13 @@ struct LibraryView: View {
                             if !FileManager.default.fileExists(atPath: file(updated.id).path) { load() }
                             return false
                         }
-                    }, open: { NSWorkspace.shared.open(file(book.id)) }, export: {
+                    }, open: { openBook(book) }, export: {
                         let panel = NSSavePanel(); panel.nameFieldStringValue = book.title + ".epub"
                         if panel.runModal() == .OK, let url = panel.url {
                             do { try FileManager.default.copyItem(at: file(book.id), to: url) }
                             catch { self.error = error.localizedDescription }
                         }
-                    }, remove: { bookToRemove = book }, editArtwork: chooseArtwork).id(book.id)
+                    }, remove: { bookToRemove = book }, editArtwork: chooseArtwork, startEditing: editMetadataOnOpen).id(book.id)
                 } else {
                     library
                 }
@@ -56,6 +62,7 @@ struct LibraryView: View {
         .tint(accent)
         .onChange(of: libraryFolder, initial: true) {
             selected = nil
+            selection = LibrarySelection()
             books = []
             load()
         }
@@ -67,6 +74,12 @@ struct LibraryView: View {
                     artworkData = nil
                 }, cancel: { artworkData = nil })
             }
+        }
+        .sheet(item: $previewBook) { book in
+            BookPreview(book: book, coverURL: store.cover(book.id), read: { openBook(book) }, details: {
+                previewBook = nil
+                showDetails(book)
+            }, close: { previewBook = nil })
         }
         .sheet(isPresented: $isImporting) {
             VStack(spacing: 18) {
@@ -114,9 +127,40 @@ struct LibraryView: View {
                     Image(systemName: "square.grid.2x2").tag(false)
                     Image(systemName: "list.bullet").tag(true)
                 }.pickerStyle(.segmented).labelsHidden().frame(width: 90)
+                Button {
+                    if let book = activeBook { showDetails(book) }
+                } label: { Image(systemName: "info.circle") }
+                    .disabled(activeBook == nil)
+                    .keyboardShortcut("i")
+                    .help("View Details (⌘I)")
+                    .accessibilityLabel("View book details")
             }
             .overlay(alignment: .bottom) { Divider().offset(y: 1) }
             collection
+                .focusable().focused($libraryFocused)
+                .focusEffectDisabled()
+                .onAppear { libraryFocused = true }
+                .onKeyPress(.return) {
+                    guard let book = activeBook else { return .ignored }
+                    openBook(book); return .handled
+                }
+                .onKeyPress(.space) {
+                    guard let book = activeBook else { return .ignored }
+                    previewBook = book; return .handled
+                }
+                .onMoveCommand { direction in
+                    let visible = Book.library(books, search: search, sortByAuthor: sortByAuthor)
+                    let stride = listView ? 1 : gridColumnCount
+                    let offset = direction == .up ? -stride : (direction == .down ? stride : (direction == .left ? -1 : 1))
+                    selection.move(offset, in: visible.map(\.id))
+                }
+                .background {
+                    GeometryReader { geometry in
+                        Color.clear.onChange(of: geometry.size.width, initial: true) {
+                            gridColumnCount = max(1, Int((geometry.size.width + 28) / (160 + 28)))
+                        }
+                    }
+                }
         }
     }
 
@@ -202,34 +246,86 @@ struct LibraryView: View {
                     if listView {
                         LazyVStack(spacing: 12) {
                             ForEach(visible) { book in
-                                Button { selected = book } label: {
+                                libraryItem(book) {
                                     HStack(spacing: 20) {
                                         cover(book).frame(width: 52, height: 74)
                                         bookText(book)
                                         Spacer()
-                                        Image(systemName: "chevron.right").foregroundStyle(.secondary)
-                                    }.padding(12).contentShape(Rectangle())
+                                    }.padding(12).padding(.trailing, 44).contentShape(Rectangle())
                                         .background(.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 10))
-                                }.buttonStyle(.plain)
-                                    .contextMenu { Button("Remove book", role: .destructive) { bookToRemove = book } }
+                                }
                             }
                         }
                     } else {
                         LazyVGrid(columns: [GridItem(.adaptive(minimum: 160, maximum: 230), spacing: 28, alignment: .top)], alignment: .leading, spacing: 28) {
                             ForEach(visible) { book in
-                                Button { selected = book } label: {
+                                libraryItem(book) {
                                     VStack(alignment: .leading, spacing: 12) {
                                         cover(book).aspectRatio(0.7, contentMode: .fit)
                                         bookText(book)
                                     }.contentShape(Rectangle())
-                                }.buttonStyle(.plain)
-                                    .contextMenu { Button("Remove book", role: .destructive) { bookToRemove = book } }
+                                }
                             }
                         }
                     }
                 }
             }
         }
+    }
+
+    private var activeBook: Book? {
+        Book.library(books, search: search, sortByAuthor: sortByAuthor).first { $0.id == selection.activeID }
+    }
+
+    private func selectBook(_ book: Book) {
+        selection.select(book.id, extending: NSEvent.modifierFlags.contains(.command))
+        libraryFocused = true
+    }
+
+    private func showDetails(_ book: Book, editing: Bool = false) {
+        selection.select(book.id)
+        editMetadataOnOpen = editing
+        selected = book
+    }
+
+    private func openBook(_ book: Book) {
+        if !NSWorkspace.shared.open(file(book.id)) {
+            error = "Unable to open “\(book.title)” in the default reader."
+        }
+    }
+
+    private func libraryItem<Content: View>(_ book: Book, @ViewBuilder content: () -> Content) -> some View {
+        content().padding(4)
+            .background(selection.ids.contains(book.id) ? accent.opacity(0.12) : .clear, in: RoundedRectangle(cornerRadius: 12))
+            .overlay { RoundedRectangle(cornerRadius: 12).strokeBorder(selection.ids.contains(book.id) ? accent : .clear, lineWidth: 2) }
+            .contentShape(Rectangle())
+            .onTapGesture(count: 2) { selection.select(book.id); libraryFocused = true; openBook(book) }
+            .simultaneousGesture(TapGesture().onEnded { selectBook(book) })
+            .overlay(alignment: .topTrailing) {
+                if selection.ids.contains(book.id) {
+                    Button { showDetails(book) } label: {
+                        Image(systemName: "info.circle.fill").font(.title2)
+                            .padding(6).background(.regularMaterial, in: Circle())
+                    }.buttonStyle(.plain).padding(8)
+                        .help("View Details (⌘I)").accessibilityLabel("View details for \(book.title)")
+                }
+            }
+            .contextMenu {
+                Button("Read (Open in Default App)") { openBook(book) }
+                Button("View Details…") { showDetails(book) }
+                Button("Edit Metadata…") { showDetails(book, editing: true) }
+                Button("Edit Cover…") { showDetails(book); chooseArtwork() }
+                Divider()
+                Button("Reveal in Finder") { NSWorkspace.shared.activateFileViewerSelecting([file(book.id)]) }
+                Button("Remove book", role: .destructive) { bookToRemove = book }
+            }
+            .help("Click to select, double-click to read. Space previews; ⌘I opens details.")
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("\(book.title), \(book.author)")
+            .accessibilityAddTraits(selection.ids.contains(book.id) ? [.isSelected] : [])
+            .accessibilityAction { selectBook(book) }
+            .accessibilityAction(named: "Read") { openBook(book) }
+            .accessibilityAction(named: "View Details") { showDetails(book) }
     }
 
     private func bookText(_ book: Book) -> some View {
@@ -298,6 +394,8 @@ struct LibraryView: View {
             let refreshed = try store.load()
             books = refreshed
             selected = book
+            if let book { selection.select(book.id) }
+            else { selection.reconcile(with: refreshed.map(\.id)) }
         }
         catch { self.error = error.localizedDescription }
     }

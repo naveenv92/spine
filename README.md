@@ -67,7 +67,19 @@ Existing EPUBs are discovered where they are. Importing and saving changed autho
 
 ### Browse and open
 
-Search by title or author, sort by either field, and switch between grid and list views. Click a book to open its details page. **Open Book** launches the EPUB in its default external reader; **Export** copies it to a destination you choose.
+Search by title or author, sort by either field, and switch between grid and list views. Library interactions work in both layouts:
+
+| Interaction | Action |
+| --- | --- |
+| Single click | Select and highlight a book. |
+| Command-click | Add or remove a book from the selection. |
+| Arrow keys | Move selection through the visible books. |
+| Double-click or Return | Read the active book in the system's default EPUB reader. |
+| Cover's ⓘ button, toolbar ⓘ, or ⌘I | Open the book's details page. |
+| Space | Open a read-only book preview; Escape closes it. |
+| Right-click / Control-click | Read, view details, edit metadata, edit cover, reveal in Finder, or remove the clicked book. |
+
+When several books are selected, keyboard actions apply to the most recently selected book; bulk editing and removal are not implemented. **Open Book** on the details page also launches the default reader; **Export** copies the EPUB to a destination you choose.
 
 ### Edit metadata
 

@@ -9,6 +9,7 @@ struct BookDetails<Cover: View>: View {
     let export: () -> Void
     let remove: () -> Void
     let editArtwork: () -> Void
+    var startEditing = false
     @State private var original: Book?
     @State private var isEditing = false
     @State private var editingDescription = false
@@ -93,6 +94,8 @@ struct BookDetails<Cover: View>: View {
                     }.padding(.bottom, 24)
                 }
             }
+        }.onAppear {
+            if startEditing { original = book; isEditing = true }
         }
     }
 
