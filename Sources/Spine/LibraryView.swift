@@ -10,7 +10,7 @@ struct LibraryView: View {
     @State private var gridColumnCount = 1
     @FocusState private var libraryFocused: Bool
     @State private var search = ""
-    @State private var sortByAuthor = false
+    @State private var sort = LibrarySort.title
     @State private var listView = false
     @State private var error: String?
     @State private var bookToRemove: Book?
@@ -130,10 +130,11 @@ struct LibraryView: View {
                 Text("All Books").font(.headline).padding(.horizontal, 14).padding(.bottom, 14)
                     .overlay(alignment: .bottom) { Capsule().fill(accent).frame(height: 3) }
                 Spacer()
-                Picker("Sort by", selection: $sortByAuthor) {
-                    Text("Title").tag(false)
-                    Text("Author").tag(true)
-                }.frame(width: 160)
+                Picker("Sort by", selection: $sort) {
+                    ForEach(LibrarySort.allCases, id: \.self) { option in
+                        Text(option.rawValue).tag(option)
+                    }
+                }.frame(width: 245)
                 Picker("Layout", selection: $listView) {
                     Image(systemName: "square.grid.2x2").tag(false)
                     Image(systemName: "list.bullet").tag(true)
@@ -160,7 +161,7 @@ struct LibraryView: View {
                     previewBook = book; return .handled
                 }
                 .onMoveCommand { direction in
-                    let visible = Book.library(books, search: search, sortByAuthor: sortByAuthor)
+                    let visible = Book.library(books, search: search, sort: sort)
                     let stride = listView ? 1 : gridColumnCount
                     let offset = direction == .up ? -stride : (direction == .down ? stride : (direction == .left ? -1 : 1))
                     selection.move(offset, in: visible.map(\.id))
@@ -242,7 +243,7 @@ struct LibraryView: View {
     }
 
     private var collection: some View {
-        let visible = Book.library(books, search: search, sortByAuthor: sortByAuthor)
+        let visible = Book.library(books, search: search, sort: sort)
         return Group {
             if isLoading {
                 ProgressView("Loading library…").frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -299,7 +300,7 @@ struct LibraryView: View {
     }
 
     private var activeBook: Book? {
-        Book.library(books, search: search, sortByAuthor: sortByAuthor).first { $0.id == selection.activeID }
+        Book.library(books, search: search, sort: sort).first { $0.id == selection.activeID }
     }
 
     private func selectBook(_ book: Book) {
@@ -487,14 +488,35 @@ struct LibraryView: View {
     }
 }
 
+enum LibrarySort: String, CaseIterable {
+    case title = "Title"
+    case authorFirstName = "Author First Name"
+    case authorLastName = "Author Last Name"
+
+    func key(for book: Book) -> String {
+        guard self != .title else { return book.title }
+        let author = book.author.components(separatedBy: ";")
+            .first { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty } ?? ""
+        let commaParts = author.split(separator: ",", maxSplits: 1).map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        if commaParts.count == 2 {
+            return self == .authorFirstName ? commaParts[1] + " " + commaParts[0] : commaParts[0] + " " + commaParts[1]
+        }
+        let words = author.split(whereSeparator: \.isWhitespace)
+        if self == .authorLastName, let last = words.last {
+            return ([String(last)] + words.dropLast().map(String.init)).joined(separator: " ")
+        }
+        return words.joined(separator: " ")
+    }
+}
+
 extension Book {
-    static func library(_ books: [Book], search: String, sortByAuthor: Bool) -> [Book] {
+    static func library(_ books: [Book], search: String, sort: LibrarySort) -> [Book] {
         books.filter { search.isEmpty || ($0.title + " " + $0.author).localizedCaseInsensitiveContains(search) }
             .sorted {
-                let left = sortByAuthor ? $0.author : $0.title
-                let right = sortByAuthor ? $1.author : $1.title
-                if left == right { return $0.title.localizedStandardCompare($1.title) == .orderedAscending }
-                return left.localizedStandardCompare(right) == .orderedAscending
+                let comparison = sort.key(for: $0).localizedStandardCompare(sort.key(for: $1))
+                if comparison != .orderedSame { return comparison == .orderedAscending }
+                let titleComparison = $0.title.localizedStandardCompare($1.title)
+                return titleComparison == .orderedSame ? $0.id < $1.id : titleComparison == .orderedAscending
             }
     }
 }

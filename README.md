@@ -71,7 +71,7 @@ Existing EPUBs are discovered where they are. Importing and saving changed autho
 
 ### Browse and open
 
-Search by title or author, sort by either field, and switch between grid and list views. Library interactions work in both layouts:
+Search by title or author, sort by **Title**, **Author First Name**, or **Author Last Name**, and switch between grid and list views. Author sorting uses the first listed author and supports both `First Last` and `Last, First` names. Last-name sorting treats the final word as the surname for names without a comma; compound surnames and suffixes are not inferred. Ties sort by book title. Library interactions work in both layouts:
 
 | Interaction | Action |
 | --- | --- |
