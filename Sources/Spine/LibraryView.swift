@@ -8,6 +8,7 @@ struct LibraryView: View {
     @State private var sortByAuthor = false
     @State private var listView = false
     @State private var error: String?
+    @State private var bookToRemove: Book?
     private let accent = Color(red: 0.48, green: 0.37, blue: 0.92)
     @AppStorage("libraryFolder") private var libraryFolder = ""
     private var store: LibraryStore { LibraryStore(root: URL(fileURLWithPath: libraryFolder, isDirectory: true)) }
@@ -34,7 +35,7 @@ struct LibraryView: View {
                             do { try FileManager.default.copyItem(at: file(book.id), to: url) }
                             catch { self.error = error.localizedDescription }
                         }
-                    }).id(book.id)
+                    }, remove: { bookToRemove = book }).id(book.id)
                 } else {
                     library
                 }
@@ -48,6 +49,19 @@ struct LibraryView: View {
         .alert("Unable to complete action", isPresented: Binding(
             get: { error != nil }, set: { if !$0 { error = nil } }
         )) { Button("OK") { error = nil } } message: { Text(error ?? "") }
+        .confirmationDialog("Remove book from library?", isPresented: Binding(
+            get: { bookToRemove != nil }, set: { if !$0 { bookToRemove = nil } }
+        ), titleVisibility: .visible, presenting: bookToRemove) { book in
+            Button("Move to Trash", role: .destructive) {
+                do { try store.remove(book.id) }
+                catch { self.error = error.localizedDescription }
+                bookToRemove = nil
+                load()
+            }
+            Button("Cancel", role: .cancel) { bookToRemove = nil }
+        } message: { book in
+            Text("“\(book.title)” and its library files will be moved to Trash. You can restore them from Trash.")
+        }
     }
 
     private var library: some View {
@@ -162,6 +176,7 @@ struct LibraryView: View {
                                     }.padding(12).contentShape(Rectangle())
                                         .background(.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 10))
                                 }.buttonStyle(.plain)
+                                    .contextMenu { Button("Remove book", role: .destructive) { bookToRemove = book } }
                             }
                         }
                     } else {
@@ -173,6 +188,7 @@ struct LibraryView: View {
                                         bookText(book)
                                     }.contentShape(Rectangle())
                                 }.buttonStyle(.plain)
+                                    .contextMenu { Button("Remove book", role: .destructive) { bookToRemove = book } }
                             }
                         }
                     }

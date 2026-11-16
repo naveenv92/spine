@@ -7,6 +7,7 @@ struct BookDetails<Cover: View>: View {
     let save: (Book) -> Bool
     let open: () -> Void
     let export: () -> Void
+    let remove: () -> Void
     @State private var original: Book?
     @State private var isEditing = false
     @State private var editingDescription = false
@@ -69,6 +70,9 @@ struct BookDetails<Cover: View>: View {
                                 HStack(spacing: 12) { actions }
                                 VStack(alignment: .leading, spacing: 12) { actions }
                             }.controlSize(.large)
+                            Button(role: .destructive, action: remove) {
+                                Label("Remove Book", systemImage: "trash")
+                            }.buttonStyle(.borderedProminent).tint(.red).controlSize(.large)
                             Divider().padding(.vertical, 4)
                             Text("Description").font(.title2.bold())
                             if isEditing {

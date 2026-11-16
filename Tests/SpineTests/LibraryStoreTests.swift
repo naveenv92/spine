@@ -99,4 +99,77 @@ final class LibraryStoreTests: XCTestCase {
         try FileManager.default.createSymbolicLink(at: root.appendingPathComponent("linked.epub"), withDestinationURL: source)
         XCTAssertTrue(try store.load().isEmpty)
     }
+
+    func testRemovalTrashesBookFilesAndEmptyFoldersButPreservesLibraryAndOriginal() throws {
+        let directory = try temporaryDirectory()
+        let source = try epub(in: directory)
+        let root = directory.appendingPathComponent("library")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let store = LibraryStore(root: root)
+        let book = try store.importBook(source)
+        try Data("cover".utf8).write(to: store.cover(book.id))
+        try Data("backup".utf8).write(to: store.file(book.id).appendingPathExtension("backup"))
+        let trash = directory.appendingPathComponent("trash")
+        try FileManager.default.createDirectory(at: trash, withIntermediateDirectories: true)
+        var trashed: [URL] = []
+        try store.remove(book.id) { url in
+            trashed.append(url)
+            try FileManager.default.moveItem(at: url, to: trash.appendingPathComponent(url.lastPathComponent))
+        }
+        XCTAssertTrue(FileManager.default.fileExists(atPath: root.path))
+        XCTAssertTrue(try FileManager.default.contentsOfDirectory(atPath: root.path).isEmpty)
+        XCTAssertEqual(trashed.map(\.lastPathComponent), ["piranesi", "susanna_clarke"])
+        XCTAssertTrue(FileManager.default.fileExists(atPath: trash.appendingPathComponent("piranesi/piranesi.epub").path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: trash.appendingPathComponent("piranesi/piranesi.cover").path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: trash.appendingPathComponent("piranesi/piranesi.epub.backup").path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: source.path))
+    }
+
+    func testRemovalPreservesSharedFoldersAndUnrelatedFiles() throws {
+        let directory = try temporaryDirectory()
+        let store = LibraryStore(root: directory)
+        let folder = directory.appendingPathComponent("author/shared")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        for name in ["one.epub", "one.cover", "one.epub.backup", "two.epub", "notes.txt"] {
+            try Data(name.utf8).write(to: folder.appendingPathComponent(name))
+        }
+        var trashed: [String] = []
+        try store.remove("author/shared/one.epub") { url in
+            trashed.append(url.lastPathComponent)
+            // Stand-in for Trash, restricted to this test's temporary files.
+            try FileManager.default.moveItem(at: url, to: directory.appendingPathComponent(url.lastPathComponent))
+        }
+        XCTAssertEqual(Set(trashed), Set(["one.epub", "one.cover", "one.epub.backup"]))
+        XCTAssertEqual(Set(try FileManager.default.contentsOfDirectory(atPath: folder.path)), Set(["two.epub", "notes.txt"]))
+    }
+
+    func testFlatBookRemovalNeverTrashesLibraryRoot() throws {
+        let directory = try temporaryDirectory()
+        let store = LibraryStore(root: directory)
+        try Data().write(to: directory.appendingPathComponent("flat.epub"))
+        let moved = directory.appendingPathComponent("trashed")
+        var names: [String] = []
+        try store.remove("flat.epub") { url in
+            names.append(url.lastPathComponent)
+            try FileManager.default.moveItem(at: url, to: moved)
+        }
+        XCTAssertEqual(names, ["flat.epub"])
+        XCTAssertTrue(FileManager.default.fileExists(atPath: directory.path))
+    }
+
+    func testRemovalRejectsOutsidePathsAndPropagatesTrashFailure() throws {
+        let directory = try temporaryDirectory()
+        let root = directory.appendingPathComponent("library")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let outside = directory.appendingPathComponent("outside.epub")
+        try Data().write(to: outside)
+        let store = LibraryStore(root: root)
+        XCTAssertThrowsError(try store.remove("../outside.epub") { _ in XCTFail("Must not trash outside library") })
+        try FileManager.default.createSymbolicLink(at: root.appendingPathComponent("linked.epub"), withDestinationURL: outside)
+        XCTAssertThrowsError(try store.remove("linked.epub") { _ in XCTFail("Must not follow external symlinks") })
+        try Data().write(to: root.appendingPathComponent("book.epub"))
+        XCTAssertThrowsError(try store.remove("book.epub") { _ in throw CocoaError(.fileWriteNoPermission) })
+        XCTAssertTrue(FileManager.default.fileExists(atPath: root.appendingPathComponent("book.epub").path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: outside.path))
+    }
 }

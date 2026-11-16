@@ -75,4 +75,37 @@ struct LibraryStore {
         if let scanError { throw scanError }
         return books
     }
+
+    func remove(_ id: String, trash: (URL) throws -> Void = { try FileManager.default.trashItem(at: $0, resultingItemURL: nil) }) throws {
+        try validate()
+        let book = file(id).standardizedFileURL
+        try checkLocation(book)
+        guard book.pathExtension.lowercased() == "epub",
+              try book.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey]).isRegularFile == true,
+              try book.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink != true else {
+            throw CocoaError(.fileWriteInvalidFileName)
+        }
+        let manager = FileManager.default
+        let files = [book, cover(id), book.appendingPathExtension("backup")]
+            .filter { manager.fileExists(atPath: $0.path) }
+        for url in files { try checkLocation(url) }
+        var directory = book.deletingLastPathComponent()
+        let base = root.resolvingSymlinksInPath().standardizedFileURL
+        let contents = try manager.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
+        // Only trash a whole folder when it contains this book's files alone.
+        if directory.resolvingSymlinksInPath().standardizedFileURL != base,
+           contents.allSatisfy({ files.contains($0.standardizedFileURL) || $0.lastPathComponent == ".DS_Store" }) {
+            try trash(directory)
+            directory.deleteLastPathComponent()
+        } else {
+            for url in files { try trash(url) }
+        }
+        while directory.resolvingSymlinksInPath().standardizedFileURL != base {
+            try checkLocation(directory)
+            let remaining = try manager.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
+            guard remaining.allSatisfy({ $0.lastPathComponent == ".DS_Store" }) else { break }
+            try trash(directory)
+            directory.deleteLastPathComponent()
+        }
+    }
 }
