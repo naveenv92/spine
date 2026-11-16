@@ -25,10 +25,14 @@ struct LibraryView: View {
                 } else if let book = selected {
                     BookDetails(book: book, cover: cover(book), back: { selected = nil }, save: { updated in
                         do {
-                            let epub = try EPUB(file(updated.id)); defer { epub.clean() }
-                            try epub.save(updated, to: file(updated.id)); load(); selected = updated
+                            let saved = try store.save(updated)
+                            load(); selected = saved
                             return true
-                        } catch { self.error = error.localizedDescription; return false }
+                        } catch {
+                            self.error = error.localizedDescription
+                            if !FileManager.default.fileExists(atPath: file(updated.id).path) { load() }
+                            return false
+                        }
                     }, open: { NSWorkspace.shared.open(file(book.id)) }, export: {
                         let panel = NSSavePanel(); panel.nameFieldStringValue = book.title + ".epub"
                         if panel.runModal() == .OK, let url = panel.url {

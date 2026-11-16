@@ -172,4 +172,92 @@ final class LibraryStoreTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: root.appendingPathComponent("book.epub").path))
         XCTAssertTrue(FileManager.default.fileExists(atPath: outside.path))
     }
+
+    func testSavingRenamesAuthorTitleAndBothWhileKeepingCoverAndBackup() throws {
+        let directory = try temporaryDirectory()
+        let source = try epub(in: directory)
+        let root = directory.appendingPathComponent("library")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let store = LibraryStore(root: root)
+        var book = try store.importBook(source)
+        let originalBytes = try Data(contentsOf: source)
+        let cover = Data("cover image".utf8)
+        try cover.write(to: store.cover(book.id))
+        for (author, title, expected) in [
+            ("New Author", "Piranesi", "new_author/piranesi/piranesi.epub"),
+            ("New Author", "New Title", "new_author/new_title/new_title.epub"),
+            ("Other Author", "Other Title", "other_author/other_title/other_title.epub")
+        ] {
+            let previous = book
+            book.author = author; book.title = title
+            book = try store.save(book)
+            XCTAssertEqual(book.id, expected)
+            XCTAssertFalse(FileManager.default.fileExists(atPath: store.file(previous.id).deletingLastPathComponent().path))
+            XCTAssertEqual(try Data(contentsOf: store.cover(book.id)), cover)
+            let saved = try EPUB(store.file(book.id)); defer { saved.clean() }
+            XCTAssertEqual(try saved.book(id: book.id), book)
+            let backup = try EPUB(store.file(book.id).appendingPathExtension("backup")); defer { backup.clean() }
+            XCTAssertEqual(try backup.book(id: previous.id), previous)
+            XCTAssertEqual(try store.load().map(\.id), [expected])
+        }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: root.appendingPathComponent("susanna_clarke").path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: root.appendingPathComponent("new_author").path))
+        XCTAssertEqual(try Data(contentsOf: source), originalBytes)
+    }
+
+    func testSavingIntoOccupiedNamePreservesOtherBooksAndKeepsSuffixOnLaterSaves() throws {
+        let directory = try temporaryDirectory()
+        let source = try epub(in: directory)
+        let root = directory.appendingPathComponent("library")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let store = LibraryStore(root: root)
+        let first = try store.importBook(source)
+        var second = try store.importBook(source)
+        second.title = "Another Book"
+        second = try store.save(second)
+        second.title = first.title
+        second = try store.save(second)
+        XCTAssertEqual(second.id, "susanna_clarke/piranesi_2/piranesi.epub")
+        XCTAssertEqual(try Data(contentsOf: store.file(first.id)), try Data(contentsOf: source))
+        let id = second.id
+        second.publisher = "New publisher"
+        second = try store.save(second)
+        XCTAssertEqual(second.id, id)
+        second.author = "SUSANNA CLARKE"; second.title = "PIRANESI"
+        XCTAssertEqual(try store.save(second).id, id)
+    }
+
+    func testRenamePreservesUnrelatedFilesInOldFolder() throws {
+        let directory = try temporaryDirectory()
+        let source = try epub(in: directory)
+        let root = directory.appendingPathComponent("library")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let store = LibraryStore(root: root)
+        var book = try store.importBook(source)
+        let old = store.file(book.id)
+        let notes = old.deletingLastPathComponent().appendingPathComponent("notes.txt")
+        try Data("keep".utf8).write(to: notes)
+        book.title = "New Title"
+        let updated = try store.save(book)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: old.path))
+        XCTAssertEqual(try Data(contentsOf: notes), Data("keep".utf8))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: store.file(updated.id).path))
+    }
+
+    func testRenameFailureLeavesOriginalBookAndMetadataUntouched() throws {
+        let directory = try temporaryDirectory()
+        let source = try epub(in: directory)
+        let root = directory.appendingPathComponent("library")
+        let outside = directory.appendingPathComponent("outside")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: outside, withIntermediateDirectories: true)
+        let store = LibraryStore(root: root)
+        var book = try store.importBook(source)
+        let original = try Data(contentsOf: store.file(book.id))
+        try FileManager.default.createSymbolicLink(at: root.appendingPathComponent("new_author"), withDestinationURL: outside)
+        book.author = "New Author"
+        XCTAssertThrowsError(try store.save(book))
+        XCTAssertEqual(try Data(contentsOf: store.file(book.id)), original)
+        XCTAssertTrue(try FileManager.default.contentsOfDirectory(atPath: outside.path).isEmpty)
+    }
 }

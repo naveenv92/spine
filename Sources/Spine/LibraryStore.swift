@@ -28,10 +28,7 @@ struct LibraryStore {
         }
     }
 
-    @discardableResult func importBook(_ source: URL) throws -> Book {
-        try validate()
-        let epub = try EPUB(source); defer { epub.clean() }
-        var book = try epub.book(id: "")
+    private func destination(for book: Book) throws -> URL {
         let author = Self.folderName(book.author, fallback: "unknown_author")
         let title = Self.folderName(book.title, fallback: "untitled")
         let authorDirectory = root.appendingPathComponent(author, isDirectory: true)
@@ -44,10 +41,56 @@ struct LibraryStore {
         }
         try checkLocation(directory)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let destination = directory.appendingPathComponent(title + ".epub")
+        return directory.appendingPathComponent(title + ".epub")
+    }
+
+    private func id(for url: URL) -> String {
+        url.resolvingSymlinksInPath().pathComponents
+            .dropFirst(root.resolvingSymlinksInPath().pathComponents.count).joined(separator: "/")
+    }
+
+    @discardableResult func importBook(_ source: URL) throws -> Book {
+        try validate()
+        let epub = try EPUB(source); defer { epub.clean() }
+        var book = try epub.book(id: "")
+        let destination = try destination(for: book)
         try FileManager.default.copyItem(at: source, to: destination)
-        book.id = "\(author)/\(directory.lastPathComponent)/\(destination.lastPathComponent)"
+        book.id = id(for: destination)
         return book
+    }
+
+    func save(_ book: Book) throws -> Book {
+        try validate()
+        let source = file(book.id)
+        try checkLocation(source)
+        let epub = try EPUB(source); defer { epub.clean() }
+        let original = try epub.book(id: book.id)
+        let authorChanged = Self.folderName(original.author, fallback: "unknown_author") != Self.folderName(book.author, fallback: "unknown_author")
+        let titleChanged = Self.folderName(original.title, fallback: "untitled") != Self.folderName(book.title, fallback: "untitled")
+        guard authorChanged || titleChanged else {
+            try epub.save(book, to: source)
+            return book
+        }
+        try checkLocation(cover(book.id))
+        try checkLocation(source.appendingPathExtension("backup"))
+        let destination = try destination(for: book)
+        var updated = book
+        updated.id = id(for: destination)
+        var saved = false
+        do {
+            try FileManager.default.copyItem(at: source, to: destination)
+            if FileManager.default.fileExists(atPath: cover(book.id).path) {
+                try FileManager.default.copyItem(at: cover(book.id), to: cover(updated.id))
+            }
+            try epub.save(updated, to: destination)
+            saved = true
+            // The new EPUB and its pre-edit backup are safe before removing old files.
+            try remove(book.id) { try FileManager.default.removeItem(at: $0) }
+        } catch {
+            if !saved { try? FileManager.default.removeItem(at: destination.deletingLastPathComponent()) }
+            throw error
+        }
+        return updated
     }
 
     func load() throws -> [Book] {
@@ -65,8 +108,7 @@ struct LibraryStore {
                   url.pathExtension.lowercased() == "epub" else { continue }
             try checkLocation(url)
             guard let epub = try? EPUB(url) else { continue }; defer { epub.clean() }
-            let id = url.resolvingSymlinksInPath().pathComponents
-                .dropFirst(root.resolvingSymlinksInPath().pathComponents.count).joined(separator: "/")
+            let id = id(for: url)
             if let book = try? epub.book(id: id) {
                 if let data = try? epub.cover() { try? data.write(to: cover(id), options: .atomic) }
                 books.append(book)
