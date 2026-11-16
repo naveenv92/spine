@@ -17,23 +17,24 @@ struct LibraryView: View {
         HStack(spacing: 0) {
             sidebar
             Divider()
-            VStack(alignment: .leading, spacing: 24) {
-                header
-                HStack {
-                    Text("All Books").font(.headline).padding(.horizontal, 14).padding(.bottom, 14)
-                        .overlay(alignment: .bottom) { Capsule().fill(accent).frame(height: 3) }
-                    Spacer()
-                    Picker("Sort by", selection: $sortByAuthor) {
-                        Text("Title").tag(false)
-                        Text("Author").tag(true)
-                    }.frame(width: 160)
-                    Picker("Layout", selection: $listView) {
-                        Image(systemName: "square.grid.2x2").tag(false)
-                        Image(systemName: "list.bullet").tag(true)
-                    }.pickerStyle(.segmented).frame(width: 90)
+            Group {
+                if let book = selected {
+                    BookDetails(book: book, cover: cover(book), back: { selected = nil }, save: { updated in
+                        do {
+                            let epub = try EPUB(file(updated.id)); defer { epub.clean() }
+                            try epub.save(updated, to: file(updated.id)); load(); selected = updated
+                            return true
+                        } catch { self.error = error.localizedDescription; return false }
+                    }, open: { NSWorkspace.shared.open(file(book.id)) }, export: {
+                        let panel = NSSavePanel(); panel.nameFieldStringValue = book.title + ".epub"
+                        if panel.runModal() == .OK, let url = panel.url {
+                            do { try FileManager.default.copyItem(at: file(book.id), to: url) }
+                            catch { self.error = error.localizedDescription }
+                        }
+                    }).id(book.id)
+                } else {
+                    library
                 }
-                .overlay(alignment: .bottom) { Divider().offset(y: 1) }
-                collection
             }.padding(32).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .background(Color(red: 0.045, green: 0.05, blue: 0.055))
         }
@@ -41,39 +42,30 @@ struct LibraryView: View {
         .preferredColorScheme(.dark)
         .tint(accent)
         .task { load() }
-        .sheet(item: $selected) { book in
-            VStack(spacing: 0) {
-                HStack {
-                    Text("Book Details").font(.title2.bold())
-                    Spacer()
-                    Button("Done") { selected = nil }.keyboardShortcut(.cancelAction)
-                }.padding()
-                Divider()
-                Editor(book: book, save: { updated in
-                    do {
-                        let epub = try EPUB(file(updated.id)); defer { epub.clean() }
-                        try epub.save(updated, to: file(updated.id)); load()
-                        return true
-                    } catch { self.error = error.localizedDescription; return false }
-                }, open: { NSWorkspace.shared.open(file(book.id)) }, export: {
-                    let panel = NSSavePanel(); panel.nameFieldStringValue = book.title + ".epub"
-                    if panel.runModal() == .OK, let url = panel.url {
-                        do { try FileManager.default.copyItem(at: file(book.id), to: url) }
-                        catch { self.error = error.localizedDescription }
-                    }
-                }).id(book.id)
-            }.frame(width: 650, height: 650)
-                .alert("Unable to complete action", isPresented: errorPresented) {
-                    Button("OK") { error = nil }
-                } message: { Text(error ?? "") }
-        }
         .alert("Unable to complete action", isPresented: Binding(
-            get: { error != nil && selected == nil }, set: { if !$0 { error = nil } }
+            get: { error != nil }, set: { if !$0 { error = nil } }
         )) { Button("OK") { error = nil } } message: { Text(error ?? "") }
     }
 
-    private var errorPresented: Binding<Bool> {
-        Binding(get: { error != nil }, set: { if !$0 { error = nil } })
+    private var library: some View {
+        VStack(alignment: .leading, spacing: 24) {
+            header
+            HStack {
+                Text("All Books").font(.headline).padding(.horizontal, 14).padding(.bottom, 14)
+                    .overlay(alignment: .bottom) { Capsule().fill(accent).frame(height: 3) }
+                Spacer()
+                Picker("Sort by", selection: $sortByAuthor) {
+                    Text("Title").tag(false)
+                    Text("Author").tag(true)
+                }.frame(width: 160)
+                Picker("Layout", selection: $listView) {
+                    Image(systemName: "square.grid.2x2").tag(false)
+                    Image(systemName: "list.bullet").tag(true)
+                }.pickerStyle(.segmented).frame(width: 90)
+            }
+            .overlay(alignment: .bottom) { Divider().offset(y: 1) }
+            collection
+        }
     }
 
     private var sidebar: some View {
