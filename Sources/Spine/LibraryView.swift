@@ -11,7 +11,7 @@ struct LibraryView: View {
     private let accent = Color(red: 0.48, green: 0.37, blue: 0.92)
     @AppStorage("libraryFolder") private var libraryFolder = ""
     private var store: LibraryStore { LibraryStore(root: URL(fileURLWithPath: libraryFolder, isDirectory: true)) }
-    private let previousLibrary = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("MinimalBooks")
+    private let previousLibrary = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("Spine")
     private func file(_ id: String) -> URL { store.file(id) }
 
     var body: some View {
