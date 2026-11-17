@@ -357,7 +357,7 @@ struct LibraryView: View {
 
     private func bookText(_ book: Book) -> some View {
         VStack(alignment: .leading, spacing: 5) {
-            Text(book.title).font(Typography.ui(13, weight: 600)).lineLimit(2)
+            Text(book.title).font(Typography.heading(13)).lineLimit(2)
             Text(book.author).foregroundStyle(.secondary).lineLimit(1)
         }.frame(maxWidth: .infinity, alignment: .leading).multilineTextAlignment(.leading)
     }
