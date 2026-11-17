@@ -490,11 +490,12 @@ struct LibraryView: View {
 
 enum LibrarySort: String, CaseIterable {
     case title = "Title"
+    case mostRecent = "Most Recent"
     case authorFirstName = "Author First Name"
     case authorLastName = "Author Last Name"
 
     func key(for book: Book) -> String {
-        guard self != .title else { return book.title }
+        guard self != .title && self != .mostRecent else { return book.title }
         let author = book.author.components(separatedBy: ";")
             .first { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty } ?? ""
         let commaParts = author.split(separator: ",", maxSplits: 1).map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -513,6 +514,11 @@ extension Book {
     static func library(_ books: [Book], search: String, sort: LibrarySort) -> [Book] {
         books.filter { search.isEmpty || ($0.title + " " + $0.author).localizedCaseInsensitiveContains(search) }
             .sorted {
+                if sort == .mostRecent {
+                    let left = $0.addedAt ?? .distantPast
+                    let right = $1.addedAt ?? .distantPast
+                    if left != right { return left > right }
+                }
                 let comparison = sort.key(for: $0).localizedStandardCompare(sort.key(for: $1))
                 if comparison != .orderedSame { return comparison == .orderedAscending }
                 let titleComparison = $0.title.localizedStandardCompare($1.title)

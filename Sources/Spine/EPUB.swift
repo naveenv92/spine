@@ -11,6 +11,7 @@ struct Book: Identifiable, Codable, Hashable {
     var publisher: String = ""
     var language: String = ""
     var tags: String = ""
+    var addedAt: Date?
 }
 struct EPUB {
     let directory: URL

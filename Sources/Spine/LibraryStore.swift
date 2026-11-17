@@ -16,12 +16,15 @@ struct LibraryStore {
 
     private func writeCache(_ book: Book, from epub: EPUB) throws {
         try prepareMetadata(book.id)
-        let attributes = try file(book.id).resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey])
+        let attributes = try file(book.id).resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey, .creationDateKey])
         guard let modified = attributes.contentModificationDate, let size = attributes.fileSize else { throw CocoaError(.fileReadUnknown) }
         let artwork = try? epub.cover()
         if let artwork { try artwork.write(to: cover(book.id), options: .atomic) }
         else if FileManager.default.fileExists(atPath: cover(book.id).path) { try FileManager.default.removeItem(at: cover(book.id)) }
-        let cached = CachedBook(book: try epub.book(id: book.id), modified: modified, size: size, hasCover: artwork != nil)
+        var stored = try epub.book(id: book.id)
+        let previous = (try? Data(contentsOf: metadata(book.id))).flatMap { try? JSONDecoder().decode(CachedBook.self, from: $0) }
+        stored.addedAt = book.addedAt ?? previous?.book.addedAt ?? attributes.creationDate ?? modified
+        let cached = CachedBook(book: stored, modified: modified, size: size, hasCover: artwork != nil)
         try JSONEncoder().encode(cached).write(to: metadata(book.id), options: .atomic)
     }
 
@@ -101,6 +104,7 @@ struct LibraryStore {
         var book = try epub.book(id: "")
         let destination = try destination(for: book)
         book.id = id(for: destination)
+        book.addedAt = Date()
         try prepareMetadata(book.id)
         try FileManager.default.copyItem(at: source, to: destination)
         try? writeCache(book, from: epub)
@@ -154,7 +158,7 @@ struct LibraryStore {
         try epub.replaceCover(data)
         try prepareMetadata(book.id)
         try epub.save(epub.book(id: book.id), to: url)
-        try? writeCache(epub.book(id: book.id), from: epub)
+        try? writeCache(book, from: epub)
     }
 
     static func epubFiles(in selections: [URL], excluding library: URL? = nil) throws -> [URL] {
@@ -200,17 +204,24 @@ struct LibraryStore {
             let id = id(for: url)
             try checkLocation(metadata(id))
             try checkLocation(cover(id))
-            let attributes = try url.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey])
+            let attributes = try url.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey, .creationDateKey])
+            let cached = (try? Data(contentsOf: metadata(id))).flatMap { try? JSONDecoder().decode(CachedBook.self, from: $0) }
             // shortcut: use size and modification time; add hashes if external tools preserve both.
-            if let data = try? Data(contentsOf: metadata(id)),
-               let cached = try? JSONDecoder().decode(CachedBook.self, from: data), cached.book.id == id,
+            if let cached, cached.book.id == id,
                cached.modified == attributes.contentModificationDate, cached.size == attributes.fileSize,
                !cached.hasCover || FileManager.default.fileExists(atPath: cover(id).path) {
-                books.append(cached.book)
+                var book = cached.book
+                if book.addedAt == nil {
+                    book.addedAt = attributes.creationDate ?? attributes.contentModificationDate
+                    let updated = CachedBook(book: book, modified: cached.modified, size: cached.size, hasCover: cached.hasCover)
+                    try? JSONEncoder().encode(updated).write(to: metadata(id), options: .atomic)
+                }
+                books.append(book)
                 continue
             }
             guard let epub = try? EPUB(url) else { continue }; defer { epub.clean() }
-            if let book = try? epub.book(id: id) {
+            if var book = try? epub.book(id: id) {
+                book.addedAt = cached?.book.addedAt ?? attributes.creationDate ?? attributes.contentModificationDate
                 try? writeCache(book, from: epub)
                 books.append(book)
             }

@@ -309,7 +309,9 @@ final class LibraryStoreTests: XCTestCase {
             XCTAssertFalse(FileManager.default.fileExists(atPath: store.file(previous.id).path))
             XCTAssertEqual(try Data(contentsOf: store.cover(book.id)), cover)
             let saved = try EPUB(store.file(book.id)); defer { saved.clean() }
-            XCTAssertEqual(try saved.book(id: book.id), book)
+            var embedded = try saved.book(id: book.id)
+            embedded.addedAt = book.addedAt
+            XCTAssertEqual(embedded, book)
             XCTAssertFalse(FileManager.default.fileExists(atPath: store.file(book.id).appendingPathExtension("backup").path))
             XCTAssertEqual(try store.load().map(\.id), [expected])
         }
@@ -389,10 +391,10 @@ final class LibraryStoreTests: XCTestCase {
         XCTAssertEqual(try store.load(), [book])
         XCTAssertEqual(try store.metadata(book.id).resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate, sentinel)
         try Data("invalid JSON".utf8).write(to: store.metadata(book.id))
-        XCTAssertEqual(try store.load(), [book])
+        XCTAssertEqual(try store.load().first?.title, book.title)
         XCTAssertNoThrow(try JSONSerialization.jsonObject(with: Data(contentsOf: store.metadata(book.id))))
         try FileManager.default.removeItem(at: store.metadata(book.id))
-        XCTAssertEqual(try store.load(), [book])
+        XCTAssertEqual(try store.load().first?.title, book.title)
         XCTAssertTrue(FileManager.default.fileExists(atPath: store.metadata(book.id).path))
     }
 
@@ -454,5 +456,41 @@ final class LibraryStoreTests: XCTestCase {
         let saved = try EPUB(store.file(book.id)); defer { saved.clean() }
         XCTAssertEqual(try saved.book(id: book.id).author, "Neil Gaiman; Terry Pratchett")
         XCTAssertFalse(FileManager.default.fileExists(atPath: root.appendingPathComponent("Terry Pratchett").path))
+    }
+
+    func testImportDateSurvivesReopeningRenamingAndArtworkChanges() throws {
+        let directory = try temporaryDirectory()
+        let source = try epub(in: directory)
+        let root = directory.appendingPathComponent("library")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let store = LibraryStore(root: root)
+        let before = Date()
+        var book = try store.importBook(source)
+        let added = try XCTUnwrap(book.addedAt)
+        XCTAssertGreaterThanOrEqual(added, before)
+        XCTAssertEqual(try store.load().first?.addedAt, added)
+        book.title = "Renamed Book"
+        book = try store.save(book)
+        XCTAssertEqual(book.addedAt, added)
+        XCTAssertEqual(try store.load().first?.addedAt, added)
+        try store.replaceCover(coverImage(), for: book)
+        XCTAssertEqual(try store.load().first?.addedAt, added)
+    }
+
+    func testOlderCacheWithoutAddedDateLoadsWithoutUnpackingAgain() throws {
+        let directory = try temporaryDirectory()
+        let source = try epub(in: directory)
+        let root = directory.appendingPathComponent("library")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let store = LibraryStore(root: root)
+        let book = try store.importBook(source)
+        var cache = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: store.metadata(book.id))) as? [String: Any])
+        var cachedBook = try XCTUnwrap(cache["book"] as? [String: Any])
+        cachedBook.removeValue(forKey: "addedAt")
+        cache["book"] = cachedBook
+        try JSONSerialization.data(withJSONObject: cache).write(to: store.metadata(book.id))
+        let expected = try store.file(book.id).resourceValues(forKeys: [.creationDateKey]).creationDate
+        XCTAssertEqual(try store.load().first?.addedAt, expected)
+        XCTAssertEqual(try store.load().first?.addedAt, expected)
     }
 }
