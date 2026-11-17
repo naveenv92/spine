@@ -2,6 +2,8 @@
 
 A native macOS EPUB library manager built with SwiftUI. Organize your book files, browse covers, edit metadata and artwork, and open books in your preferred reader.
 
+Typography pairs Fraunces Semibold for the Spine wordmark and major library/book headings with DM Sans for controls, metadata, and descriptions. Fonts are bundled for offline use. [Fraunces](https://github.com/google/fonts/tree/main/ofl/fraunces) and [DM Sans](https://github.com/google/fonts/tree/main/ofl/dmsans) are distributed under the SIL Open Font License; license files are included in `Sources/Spine/Resources/Fonts` and the app bundle.
+
 Spine is an early prototype. Keep an independent backup of your library and import only trusted EPUB files.
 
 ## Build and run

@@ -11,7 +11,7 @@ struct BookPreview: View {
     var body: some View {
         VStack(spacing: 16) {
             HStack {
-                Text("Book Preview").font(.headline)
+                Text("Book Preview").font(Typography.ui(13, weight: 600))
                 Spacer()
                 Button("Close", action: close).keyboardShortcut(.cancelAction)
             }
@@ -20,8 +20,8 @@ struct BookPreview: View {
                     if let cover = NSImage(contentsOf: coverURL) {
                         Image(nsImage: cover).resizable().scaledToFit().frame(maxWidth: .infinity).frame(height: 260)
                     }
-                    Text(book.title).font(.title.bold())
-                    Text(book.author).font(.title3).foregroundStyle(.secondary)
+                    Text(book.title).font(Typography.heading(28))
+                    Text(book.author).font(Typography.ui(17)).foregroundStyle(.secondary)
                     DescriptionView(html: book.description, height: $descriptionHeight).frame(height: descriptionHeight)
                 }
             }
@@ -29,7 +29,7 @@ struct BookPreview: View {
                 Button("View Details", action: details).keyboardShortcut("i")
                 Button("Read", action: read).buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
             }.controlSize(.large)
-        }.padding(24).frame(width: 560, height: 650)
+        }.font(Typography.ui()).padding(24).frame(width: 560, height: 650)
             .onKeyPress(.space) { close(); return .handled }
     }
 }

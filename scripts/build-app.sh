@@ -36,6 +36,9 @@ PLIST
 plutil -lint "$app/Contents/Info.plist"
 test -x "$app/Contents/MacOS/Spine"
 test -f "$app/Contents/Resources/Spine_Spine.bundle/Contents/Resources/AppIcon.png"
+for font in Fraunces DMSans DMSans-Italic; do
+    test -f "$app/Contents/Resources/Spine_Spine.bundle/Contents/Resources/Fonts/$font.ttf"
+done
 codesign --force --deep --sign - "$app"
 codesign --verify --deep --strict "$app"
 printf '\nBuilt %s\n' "$app"

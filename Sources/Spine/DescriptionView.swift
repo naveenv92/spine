@@ -8,8 +8,9 @@ struct DescriptionView: NSViewRepresentable {
     static func document(_ html: String) -> String {
         """
         <!doctype html><html><head><meta charset="utf-8">
-        <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'">
-        <style>:root { color-scheme: light dark; overflow: hidden; } body { display: flow-root; font: -apple-system-body; margin: 0; padding: 8px; overflow-wrap: anywhere; } img, video, table { max-width: 100%; } a { color: inherit; pointer-events: none; }</style>
+        <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; font-src data:">
+        <style>\(Typography.webCSS)
+        :root { color-scheme: light dark; overflow: hidden; } body { display: flow-root; font: 13px 'DM Sans', sans-serif; margin: 0; padding: 8px; overflow-wrap: anywhere; } img, video, table { max-width: 100%; } a { color: inherit; pointer-events: none; }</style>
         </head><body>\(html)</body></html>
         """
     }
@@ -63,7 +64,7 @@ final class DescriptionWebView: WKWebView {
         guard !isLoading, bounds.width > 0 else { return }
         let width = bounds.width
         // Measure the body, not the viewport, so shorter descriptions can shrink too.
-        evaluateJavaScript("Math.ceil(document.body.getBoundingClientRect().height)", in: nil, in: .defaultClient) { [weak self] result in
+        callAsyncJavaScript("await document.fonts.ready; return Math.ceil(document.body.getBoundingClientRect().height);", arguments: [:], in: nil, in: .defaultClient) { [weak self] result in
             guard let self, self.bounds.width == width, !self.isLoading,
                   case .success(let value) = result, let number = value as? NSNumber,
                   number.doubleValue.isFinite, number.doubleValue > 0,

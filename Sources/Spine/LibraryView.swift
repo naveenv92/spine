@@ -60,6 +60,7 @@ struct LibraryView: View {
         }
         .frame(minWidth: 850, minHeight: 580)
         .preferredColorScheme(.dark)
+        .font(Typography.ui())
         .tint(accent)
         .task(id: libraryFolder) {
             selected = nil
@@ -94,7 +95,7 @@ struct LibraryView: View {
         }
         .sheet(isPresented: $isImporting) {
             VStack(spacing: 18) {
-                Text("Importing Books").font(.title2.bold())
+                Text("Importing Books").font(Typography.ui(22, weight: 600))
                 if let total = importTotal {
                     ProgressView(value: Double(importCompleted), total: Double(total))
                     Text("\(importCompleted) of \(total) files processed").monospacedDigit()
@@ -127,7 +128,7 @@ struct LibraryView: View {
         VStack(alignment: .leading, spacing: 24) {
             header
             HStack {
-                Text("All Books").font(.headline).padding(.horizontal, 14).padding(.bottom, 14)
+                Text("All Books").font(Typography.ui(13, weight: 600)).padding(.horizontal, 14).padding(.bottom, 14)
                     .overlay(alignment: .bottom) { Capsule().fill(accent).frame(height: 3) }
                 Spacer()
                 Picker("Sort by", selection: $sort) {
@@ -178,16 +179,16 @@ struct LibraryView: View {
 
     private var sidebar: some View {
         VStack(alignment: .leading, spacing: 26) {
-            Label("Spine", systemImage: "book.pages").font(.title2.bold()).padding(.bottom, 12)
-            Label("Library", systemImage: "book").font(.headline)
+            Label("Spine", systemImage: "book.pages").font(Typography.heading(22)).padding(.bottom, 12)
+            Label("Library", systemImage: "book").font(Typography.ui(13, weight: 600))
                 .frame(maxWidth: .infinity, alignment: .leading).padding(14)
                 .background(.white.opacity(0.1), in: RoundedRectangle(cornerRadius: 10))
             Divider()
-            Text("MY LIBRARY").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+            Text("MY LIBRARY").font(Typography.ui(11, weight: 600)).foregroundStyle(.secondary)
             HStack {
                 Label("All Books", systemImage: "books.vertical")
                 Spacer()
-                Text("\(books.count)").font(.caption.bold()).padding(.horizontal, 8).padding(.vertical, 4)
+                Text("\(books.count)").font(Typography.ui(11, weight: 700)).padding(.horizontal, 8).padding(.vertical, 4)
                     .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
             }
             Spacer()
@@ -219,7 +220,7 @@ struct LibraryView: View {
 
     private var heading: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("My Library").font(.system(size: 32, weight: .bold))
+            Text("My Library").font(Typography.heading(32))
             Text("\(books.count) \(books.count == 1 ? "book" : "books") in your collection")
                 .foregroundStyle(.secondary)
         }.fixedSize(horizontal: true, vertical: false)
@@ -227,7 +228,7 @@ struct LibraryView: View {
 
     private var importButton: some View {
         Button(action: importBooks) {
-            Label("Import New Books", systemImage: "plus").font(.headline).padding(.horizontal, 10).padding(.vertical, 8)
+            Label("Import New Books", systemImage: "plus").font(Typography.ui(13, weight: 600)).padding(.horizontal, 10).padding(.vertical, 8)
         }.buttonStyle(.borderedProminent).controlSize(.large)
             .keyboardShortcut("o")
             .disabled(isLoading)
@@ -356,7 +357,7 @@ struct LibraryView: View {
 
     private func bookText(_ book: Book) -> some View {
         VStack(alignment: .leading, spacing: 5) {
-            Text(book.title).font(.headline).lineLimit(2)
+            Text(book.title).font(Typography.ui(13, weight: 600)).lineLimit(2)
             Text(book.author).foregroundStyle(.secondary).lineLimit(1)
         }.frame(maxWidth: .infinity, alignment: .leading).multilineTextAlignment(.leading)
     }

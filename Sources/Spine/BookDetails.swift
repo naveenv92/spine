@@ -23,7 +23,7 @@ struct BookDetails<Cover: View>: View {
                 if isEditing && original != book { confirmDiscard = true }
                 else { back() }
             } label: {
-                Label("Back to Library", systemImage: "arrow.left").font(.headline)
+                Label("Back to Library", systemImage: "arrow.left").font(Typography.ui(13, weight: 600))
             }.controlSize(.large)
                 .confirmationDialog("Discard unsaved changes?", isPresented: $confirmDiscard) {
                     Button("Discard Changes", role: .destructive, action: back)
@@ -44,14 +44,14 @@ struct BookDetails<Cover: View>: View {
                                 metadata("Language", value: book.language, icon: "globe")
                                 Divider()
                                 metadata("Tags", value: book.tags, icon: "tag")
-                            }.font(.callout).padding(16)
+                            }.font(Typography.ui(12)).padding(16)
                                 .background(.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 10))
                                 .overlay { RoundedRectangle(cornerRadius: 10).strokeBorder(.white.opacity(0.12)) }
                         }.frame(width: min(300, geometry.size.width * 0.34))
                         VStack(alignment: .leading, spacing: 24) {
                             VStack(alignment: .leading, spacing: 8) {
-                                Text(book.title).font(.system(size: 38, weight: .bold)).textSelection(.enabled)
-                                Text(book.author).font(.title2).foregroundStyle(.secondary).textSelection(.enabled)
+                                Text(book.title).font(Typography.heading(38)).textSelection(.enabled)
+                                Text(book.author).font(Typography.ui(22)).foregroundStyle(.secondary).textSelection(.enabled)
                             }
                             if isEditing {
                                 Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 12) {
@@ -61,7 +61,7 @@ struct BookDetails<Cover: View>: View {
                                     field("Language", text: $book.language)
                                     field("Tags", text: $book.tags)
                                 }.textFieldStyle(.roundedBorder)
-                                Text("Separate authors and tags with semicolons.").font(.caption).foregroundStyle(.secondary)
+                                Text("Separate authors and tags with semicolons.").font(Typography.ui(11)).foregroundStyle(.secondary)
                             } else {
                                 VStack(alignment: .leading, spacing: 12) {
                                     Label(book.publisher.isEmpty ? "Unknown publisher" : book.publisher, systemImage: "building.2")
@@ -77,12 +77,12 @@ struct BookDetails<Cover: View>: View {
                                 Label("Remove Book", systemImage: "trash")
                             }.buttonStyle(.borderedProminent).tint(.red).controlSize(.large)
                             Divider().padding(.vertical, 4)
-                            Text("Description").font(.title2.bold())
+                            Text("Description").font(Typography.heading(22))
                             if isEditing {
                                 Toggle("Edit HTML source", isOn: $editingDescription)
                             }
                             if isEditing && editingDescription {
-                                TextEditor(text: $book.description).font(.body.monospaced()).frame(height: 360)
+                                TextEditor(text: $book.description).font(Typography.ui()).frame(height: 360)
                                     .accessibilityLabel("Description HTML")
                             } else if book.description.isEmpty {
                                 Text("No description available.").foregroundStyle(.secondary)
