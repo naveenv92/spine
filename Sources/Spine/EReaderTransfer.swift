@@ -57,6 +57,34 @@ struct EReaderTransfer {
         try run("/usr/bin/ssh", options + ["-p", settings.port, target, command])
     }
 
+    static func pathKey(_ path: String) -> String {
+        ("/" + path.split(separator: "/").filter { $0 != "." }.joined(separator: "/"))
+            .precomposedStringWithCanonicalMapping.lowercased()
+    }
+
+    func destination(for book: Book) -> String {
+        root + "/" + LibraryStore.authorFolder(book.author) + "/" + (book.id as NSString).lastPathComponent
+    }
+
+    func inventory() throws -> Set<String> {
+        try settings.validate()
+        let folder = Self.quote(root.isEmpty ? "/" : root)
+        let output = try ssh("if test -d \(folder); then find \(folder) -type f -iname '*.epub' -print0; else printf '%s\\n' 'Reader destination is missing or unreadable' >&2; exit 1; fi")
+        guard output.isEmpty || output.hasSuffix("\0") else { throw EReaderSettings.error("Unexpected response while listing reader books.") }
+        let base = Self.pathKey(root)
+        let prefix = base == "/" ? "/" : base + "/"
+        var paths = Set<String>()
+        for entry in output.split(separator: "\0") {
+            let path = Self.pathKey(String(entry))
+            guard entry.hasPrefix("/"), !entry.split(separator: "/").contains(".."), path.hasPrefix(prefix) else {
+                throw EReaderSettings.error("Reader returned a path outside the configured destination.")
+            }
+            let parts = path.dropFirst(prefix.count).split(separator: "/")
+            if !parts.contains(where: { $0.hasPrefix(".") }), (path as NSString).pathExtension == "epub" { paths.insert(path) }
+        }
+        return paths
+    }
+
     func items(for books: [Book], library: LibraryStore) throws -> [EReaderItem] {
         try settings.validate()
         var destinations = Set<String>()
@@ -67,8 +95,8 @@ struct EReaderTransfer {
             guard source.resolvingSymlinksInPath().standardizedFileURL.path.hasPrefix(base),
                   attributes.isRegularFile == true, attributes.isSymbolicLink != true,
                   source.pathExtension.lowercased() == "epub" else { throw EReaderSettings.error("Book is not a regular EPUB inside the library: \(book.title)") }
-            let destination = root + "/" + LibraryStore.authorFolder(book.author) + "/" + source.lastPathComponent
-            guard destinations.insert(destination.precomposedStringWithCanonicalMapping.lowercased()).inserted else { throw EReaderSettings.error("Two selected books have the same destination: \(destination)") }
+            let destination = destination(for: book)
+            guard destinations.insert(Self.pathKey(destination)).inserted else { throw EReaderSettings.error("Two selected books have the same destination: \(destination)") }
             return EReaderItem(source: source, destination: destination)
         }
     }

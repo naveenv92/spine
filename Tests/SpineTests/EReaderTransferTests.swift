@@ -129,4 +129,49 @@ final class EReaderTransferTests: XCTestCase {
         XCTAssertThrowsError(try transfer.send(item, replacing: false))
         XCTAssertTrue(cleaned)
     }
+
+    func testInventoryUsesOneReadOnlyCommandAndHandlesPathsAndSymlinks() throws {
+        let store = try library()
+        let root = store.root
+        let author = root.appendingPathComponent("Eugene O'Neill")
+        let hidden = root.appendingPathComponent(".hidden")
+        try FileManager.default.createDirectory(at: author, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: hidden, withIntermediateDirectories: true)
+        let book = author.appendingPathComponent("Café\nPart Two.EPUB")
+        for url in [book, hidden.appendingPathComponent("hidden.epub"), root.appendingPathComponent(".spine-transfer-123.epub")] {
+            try Data().write(to: url)
+        }
+        try FileManager.default.createSymbolicLink(at: root.appendingPathComponent("linked.epub"), withDestinationURL: book)
+        try FileManager.default.createSymbolicLink(at: root.appendingPathComponent("linked-folder"), withDestinationURL: author)
+        var configured = settings; configured.destination = root.path + "/"
+        var calls = 0
+        let transfer = EReaderTransfer(settings: configured, run: { executable, arguments in
+            calls += 1
+            XCTAssertEqual(executable, "/usr/bin/ssh")
+            XCTAssertTrue(arguments.last!.contains("-print0"))
+            return try EPUB.command("/bin/sh", ["-c", arguments.last!])
+        })
+        XCTAssertEqual(try transfer.inventory(), [EReaderTransfer.pathKey(book.path)])
+        XCTAssertEqual(calls, 1)
+        let sourceBook = Book(id: "Café\nPart Two.EPUB", title: "Café", author: "Eugene O'Neill")
+        XCTAssertEqual(EReaderTransfer.pathKey(transfer.destination(for: sourceBook)), EReaderTransfer.pathKey(book.path))
+        XCTAssertEqual(EReaderTransfer.pathKey("/books//./JOSÉ/a.epub"), EReaderTransfer.pathKey("/books/Jose\u{301}/a.epub"))
+    }
+
+    func testInventoryHandlesEmptyMissingInvalidAndOutsideResults() throws {
+        let store = try library()
+        var configured = settings; configured.destination = store.root.path
+        let transfer = EReaderTransfer(settings: configured, run: { _, arguments in
+            try EPUB.command("/bin/sh", ["-c", arguments.last!])
+        })
+        XCTAssertTrue(try transfer.inventory().isEmpty)
+        configured.destination += "/missing"
+        let missing = EReaderTransfer(settings: configured, run: transfer.run)
+        XCTAssertThrowsError(try missing.inventory())
+        XCTAssertFalse(FileManager.default.fileExists(atPath: configured.destination))
+        for output in ["Unexpected login banner", "/outside/book.epub\0", "/mnt/us/books/../book.epub\0"] {
+            let malformed = EReaderTransfer(settings: settings, run: { _, _ in output })
+            XCTAssertThrowsError(try malformed.inventory())
+        }
+    }
 }

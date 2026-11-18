@@ -1,7 +1,9 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
-struct LibraryView: View {
+@MainActor struct LibraryView: View {
+    @StateObject private var reader = EReaderConnection()
+    @Environment(\.openSettings) private var openSettings
     @State private var books: [Book] = []
     @State private var selected: Book?
     @State private var selection = LibrarySelection()
@@ -11,6 +13,7 @@ struct LibraryView: View {
     @FocusState private var libraryFocused: Bool
     @State private var search = ""
     @State private var sort = LibrarySort.title
+    @State private var readerFilter = EReaderFilter.all
     @State private var listView = false
     @State private var error: String?
     @State private var bookToRemove: Book?
@@ -64,6 +67,7 @@ struct LibraryView: View {
         .font(Typography.ui())
         .tint(accent)
         .task(id: libraryFolder) {
+            reader.disconnect()
             selected = nil
             selection = LibrarySelection()
             books = []
@@ -95,8 +99,17 @@ struct LibraryView: View {
             }, close: { previewBook = nil })
         }
         .sheet(isPresented: Binding(get: { !booksToSend.isEmpty }, set: { if !$0 { booksToSend = [] } })) {
-            EReaderSendView(books: booksToSend, library: store)
+            EReaderSendView(books: booksToSend, library: store, onComplete: { settings in
+                if reader.settings == settings, reader.checkedAt != nil {
+                    Task { await reader.refresh(settings) }
+                }
+            })
         }
+        .onReceive(NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification).receive(on: RunLoop.main)) { _ in
+            reader.invalidate(ifChanged: EReaderSettings.load())
+        }
+        .onChange(of: reader.error) { if let message = reader.error { error = message } }
+        .onChange(of: reader.checkedAt) { if reader.checkedAt == nil { readerFilter = .all } }
         .sheet(isPresented: $isImporting) {
             VStack(spacing: 18) {
                 Text("Importing Books").font(Typography.ui(22, weight: 600))
@@ -132,8 +145,19 @@ struct LibraryView: View {
         VStack(alignment: .leading, spacing: 24) {
             header
             HStack {
-                Text("All Books").font(Typography.ui(13, weight: 600)).padding(.horizontal, 14).padding(.bottom, 14)
-                    .overlay(alignment: .bottom) { Capsule().fill(accent).frame(height: 3) }
+                Spacer()
+                if reader.checkedAt != nil {
+                    Picker("E-Reader filter", selection: $readerFilter) {
+                        ForEach(EReaderFilter.allCases, id: \.self) { filter in
+                            Text(filter.rawValue).tag(filter)
+                        }
+                    }.pickerStyle(.segmented).labelsHidden().frame(maxWidth: 420)
+                        .help("Filter using the last successful reader scan.")
+                } else {
+                    Text("No E-Reader Connected").foregroundStyle(.secondary)
+                }
+            }
+            HStack {
                 Spacer()
                 Picker("Sort by", selection: $sort) {
                     ForEach(LibrarySort.allCases, id: \.self) { option in
@@ -170,7 +194,7 @@ struct LibraryView: View {
                     previewBook = book; return .handled
                 }
                 .onMoveCommand { direction in
-                    let visible = Book.library(books, search: search, sort: sort)
+                    let visible = visibleBooks
                     let stride = listView ? 1 : gridColumnCount
                     let offset = direction == .up ? -stride : (direction == .down ? stride : (direction == .left ? -1 : 1))
                     selection.move(offset, in: visible.map(\.id))
@@ -200,6 +224,7 @@ struct LibraryView: View {
                     .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
             }
             Spacer()
+            readerControls
             if !libraryFolder.isEmpty {
                 Button(action: chooseLibrary) {
                     Label("Library Folder…", systemImage: "folder")
@@ -224,6 +249,45 @@ struct LibraryView: View {
                 HStack(spacing: 20) { importButton; searchField }
             }
         }
+    }
+
+    private var readerControls: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if let settings = reader.settings {
+                Label(reader.checkedAt == nil ? "Connecting…" : settings.host, systemImage: "network")
+                    .lineLimit(1).help(settings.host)
+                if reader.isRefreshing { ProgressView(reader.checkedAt == nil ? "Scanning reader…" : "Refreshing…").controlSize(.small) }
+                if let date = reader.checkedAt {
+                    Text("Checked \(date.formatted(date: .omitted, time: .shortened))")
+                        .font(Typography.ui(11)).foregroundStyle(.secondary)
+                }
+                HStack {
+                    Button("Refresh") { Task { await reader.refresh(settings) } }.disabled(reader.isRefreshing)
+                    Button("Disconnect") { reader.disconnect() }
+                }.font(Typography.ui(11)).controlSize(.small)
+            } else {
+                Button {
+                    let settings = EReaderSettings.load()
+                    guard (try? settings.validate()) != nil else { openSettings(); return }
+                    Task { await reader.refresh(settings) }
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "network")
+                        Text("Connect to\nE-Reader")
+                            .lineLimit(nil)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .multilineTextAlignment(.center)
+                    }
+                        .font(Typography.ui(12, weight: 600))
+                        .frame(maxWidth: .infinity, minHeight: 40, alignment: .center)
+                        .padding(.vertical, 6)
+                }.buttonStyle(.borderedProminent).controlSize(.large)
+                    .accessibilityLabel("Connect to E-Reader")
+                if reader.error != nil {
+                    Text("Disconnected — connection failed").font(Typography.ui(11)).foregroundStyle(.secondary)
+                }
+            }
+        }.help("Book badges reflect the last successful scan. Refresh to check for changes.")
     }
 
     private var heading: some View {
@@ -252,7 +316,7 @@ struct LibraryView: View {
     }
 
     private var collection: some View {
-        let visible = Book.library(books, search: search, sort: sort)
+        let visible = visibleBooks
         return Group {
             if isLoading {
                 ProgressView("Loading library…").frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -264,7 +328,15 @@ struct LibraryView: View {
                 } actions: { importButton }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if visible.isEmpty {
-                ContentUnavailableView.search(text: search).frame(maxWidth: .infinity, maxHeight: .infinity)
+                Group {
+                    if !search.isEmpty {
+                        ContentUnavailableView.search(text: search)
+                    } else {
+                        ContentUnavailableView("No books \(readerFilter == .onReader ? "on" : "missing from") E-Reader",
+                            systemImage: "books.vertical",
+                            description: Text("Based on the last successful scan. Use Refresh to check for changes."))
+                    }
+                }.frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 GeometryReader { geometry in
                     ScrollView {
@@ -309,11 +381,15 @@ struct LibraryView: View {
     }
 
     private var activeBook: Book? {
-        Book.library(books, search: search, sort: sort).first { $0.id == selection.activeID }
+        visibleBooks.first { $0.id == selection.activeID }
     }
 
     private var selectedBooks: [Book] {
-        Book.library(books, search: search, sort: sort).filter { selection.ids.contains($0.id) }
+        visibleBooks.filter { selection.ids.contains($0.id) }
+    }
+
+    private var visibleBooks: [Book] {
+        reader.filter(Book.library(books, search: search, sort: sort), by: readerFilter)
     }
 
     private func selectBook(_ book: Book) {
@@ -372,6 +448,13 @@ struct LibraryView: View {
         VStack(alignment: .leading, spacing: 5) {
             Text(book.title).font(Typography.heading(13)).lineLimit(2)
             Text(book.author).foregroundStyle(.secondary).lineLimit(1)
+            if reader.contains(book) {
+                Label("On E-Reader", systemImage: "checkmark.circle.fill")
+                    .font(Typography.ui(11, weight: 600)).foregroundStyle(.green)
+                    .padding(.horizontal, 8).padding(.vertical, 4)
+                    .background(.green.opacity(0.1), in: Capsule())
+                    .help("A book exists at this destination path; contents have not been compared.")
+            }
         }.frame(maxWidth: .infinity, alignment: .leading).multilineTextAlignment(.leading)
     }
 

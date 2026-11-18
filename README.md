@@ -109,9 +109,15 @@ Removal includes the EPUB, its hidden cover and metadata caches, and empty autho
 
 ## Send to E-Reader over SSH
 
+The library's **All Books / On E-Reader / Not on E-Reader** filter shows which books still need transferring. Connect using the purple sidebar button to enable filtering. Filters use the last successful scan and reset to All Books when disconnected; use **Refresh** to check for changes.
+
 Open **Spine → E-Reader Settings…** (⌘,) to set the reader's hostname/IPv4 address and SSH port. Both start blank and are required. User defaults to `root`; Destination defaults to `/mnt/us/books/`. Settings are remembered locally; no passwords are stored.
 
 Enable the SSH server on your reader. Spine uses macOS `ssh` and `scp`, your existing SSH configuration/agent, and strict host-key verification. The connection must work without a password prompt. For a new host, connect in Terminal first and verify its host-key fingerprint before accepting it. If macOS asks for local network access, allow Spine to reach your reader.
+
+Click **Connect to E-Reader** in the left sidebar to scan the configured destination. Missing settings open **E-Reader Settings…** first; save them, then click Connect again. The scan is read-only and uses one SSH call. Matching books show an **On E-Reader** badge in grid and list views. Matching uses the same author-folder/filename paths as sending, with case and Unicode normalization; it does not compare contents or find copies renamed or stored elsewhere.
+
+The sidebar shows the host and last scan time, with **Refresh** and **Disconnect** controls. Status reflects the last successful scan, not a continuous connection check. Refresh runs in the background, and completed transfer batches refresh an existing connection to the same reader, including partial successes. A failed refresh, changed reader settings, or changed library folder clears badges. Connection state is kept only for the current window session; Spine does not connect automatically, poll, or retain remote inventory across launches.
 
 Select books and click the paper-plane toolbar button, choose **Send to E-Reader…** from the context menu, or use the button on a book's details page. The send sheet shows connection settings first, including when they are missing. The toolbar sends selected books visible under the current search/filter. Right-clicking an unselected book sends only that book.
 

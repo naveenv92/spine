@@ -38,6 +38,7 @@ struct EReaderSettingsView: View {
 struct EReaderSendView: View {
     let books: [Book]
     let library: LibraryStore
+    var onComplete: (EReaderSettings) -> Void = { _ in }
     @Environment(\.dismiss) private var dismiss
     @State private var settings = EReaderSettings.load()
     @State private var phase = Phase.ready
@@ -134,6 +135,7 @@ struct EReaderSendView: View {
                 assert(sent <= completed && completed <= items.count)
             }
             phase = .finished
+            onComplete(settings)
         }
     }
 }
