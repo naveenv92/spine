@@ -15,6 +15,7 @@ struct LibraryView: View {
     @State private var error: String?
     @State private var bookToRemove: Book?
     @State private var artworkData: Data?
+    @State private var booksToSend: [Book] = []
     @State private var isImporting = false
     @State private var isLoading = false
     @State private var importTotal: Int?
@@ -51,7 +52,7 @@ struct LibraryView: View {
                             do { try FileManager.default.copyItem(at: file(book.id), to: url) }
                             catch { self.error = error.localizedDescription }
                         }
-                    }, remove: { bookToRemove = book }, editArtwork: chooseArtwork, startEditing: editMetadataOnOpen).id(book.id)
+                    }, remove: { bookToRemove = book }, editArtwork: chooseArtwork, sendToReader: { booksToSend = [book] }, startEditing: editMetadataOnOpen).id(book.id)
                 } else {
                     library
                 }
@@ -92,6 +93,9 @@ struct LibraryView: View {
                 previewBook = nil
                 showDetails(book)
             }, close: { previewBook = nil })
+        }
+        .sheet(isPresented: Binding(get: { !booksToSend.isEmpty }, set: { if !$0 { booksToSend = [] } })) {
+            EReaderSendView(books: booksToSend, library: store)
         }
         .sheet(isPresented: $isImporting) {
             VStack(spacing: 18) {
@@ -147,6 +151,10 @@ struct LibraryView: View {
                     .keyboardShortcut("i")
                     .help("View Details (⌘I)")
                     .accessibilityLabel("View book details")
+                Button { booksToSend = selectedBooks } label: { Image(systemName: "paperplane") }
+                    .disabled(selectedBooks.isEmpty || isLoading)
+                    .help("Send selected books to E-Reader")
+                    .accessibilityLabel("Send selected books to E-Reader")
             }
             .overlay(alignment: .bottom) { Divider().offset(y: 1) }
             collection
@@ -304,6 +312,10 @@ struct LibraryView: View {
         Book.library(books, search: search, sort: sort).first { $0.id == selection.activeID }
     }
 
+    private var selectedBooks: [Book] {
+        Book.library(books, search: search, sort: sort).filter { selection.ids.contains($0.id) }
+    }
+
     private func selectBook(_ book: Book) {
         selection.select(book.id, extending: NSEvent.modifierFlags.contains(.command))
         libraryFocused = true
@@ -342,6 +354,7 @@ struct LibraryView: View {
                 Button("View Details…") { showDetails(book) }
                 Button("Edit Metadata…") { showDetails(book, editing: true) }
                 Button("Edit Cover…") { showDetails(book); chooseArtwork() }
+                Button("Send to E-Reader…") { booksToSend = selection.ids.contains(book.id) ? selectedBooks : [book] }
                 Divider()
                 Button("Reveal in Finder") { NSWorkspace.shared.activateFileViewerSelecting([file(book.id)]) }
                 Button("Remove book", role: .destructive) { bookToRemove = book }

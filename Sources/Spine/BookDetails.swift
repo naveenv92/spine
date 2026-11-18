@@ -9,6 +9,7 @@ struct BookDetails<Cover: View>: View {
     let export: () -> Void
     let remove: () -> Void
     let editArtwork: () -> Void
+    let sendToReader: () -> Void
     var startEditing = false
     @State private var original: Book?
     @State private var isEditing = false
@@ -124,6 +125,7 @@ struct BookDetails<Cover: View>: View {
         Button(action: editArtwork) { Label("Edit Artwork", systemImage: "photo") }.disabled(isEditing)
         Button(action: open) { Label("Open Book", systemImage: "book") }
         Button(action: export) { Label("Export", systemImage: "square.and.arrow.up") }
+        Button(action: sendToReader) { Label("Send to E-Reader", systemImage: "paperplane") }.disabled(isEditing)
     }
 
     private func metadata(_ title: String, value: String, icon: String) -> some View {

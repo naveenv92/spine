@@ -107,6 +107,18 @@ Right-click a book in the grid or list and choose **Remove book**, or choose **R
 
 Removal includes the EPUB, its hidden cover and metadata caches, and empty author/metadata folders. Shared folders, unrelated files, and the library root remain. A source file copied from outside the library during import is unaffected.
 
+## Send to E-Reader over SSH
+
+Open **Spine → E-Reader Settings…** (⌘,) to set the reader's hostname/IPv4 address and SSH port. Both start blank and are required. User defaults to `root`; Destination defaults to `/mnt/us/books/`. Settings are remembered locally; no passwords are stored.
+
+Enable the SSH server on your reader. Spine uses macOS `ssh` and `scp`, your existing SSH configuration/agent, and strict host-key verification. The connection must work without a password prompt. For a new host, connect in Terminal first and verify its host-key fingerprint before accepting it. If macOS asks for local network access, allow Spine to reach your reader.
+
+Select books and click the paper-plane toolbar button, choose **Send to E-Reader…** from the context menu, or use the button on a book's details page. The send sheet shows connection settings first, including when they are missing. The toolbar sends selected books visible under the current search/filter. Right-clicking an unselected book sends only that book.
+
+Only EPUBs are sent, under `Author Name/book-name.epub`; `.spine` caches are excluded. Existing destination files require a separate **Replace Existing & Send** confirmation. Each upload uses a temporary hidden file and is finalized only after copying succeeds. Unapproved destination files are never overwritten. Progress and the final sent/failed summary remain visible while work runs in the background; failed temporary uploads are cleaned up where possible, with cleanup failures reported.
+
+This is one-way transfer, not synchronization or reading-progress integration. It does not delete local books, unrelated remote files, or JPGs. macOS's default SFTP-backed `scp` is used; the reader must support it. Transfers have not yet been verified against a physical Kindle. IPv6 addresses, interactive password entry, and cancellation of an in-progress batch are not supported.
+
 ## Reset for debugging
 
 Quit Spine before resetting preferences.

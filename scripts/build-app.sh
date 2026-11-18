@@ -30,6 +30,7 @@ cat > "$app/Contents/Info.plist" <<'PLIST'
     <key>CFBundleIconFile</key><string>AppIcon</string>
     <key>LSMinimumSystemVersion</key><string>14.0</string>
     <key>NSHighResolutionCapable</key><true/>
+    <key>NSLocalNetworkUsageDescription</key><string>Spine uses SSH to send selected books to your e-reader on your local network.</string>
 </dict></plist>
 PLIST
 

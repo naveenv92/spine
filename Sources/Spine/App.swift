@@ -13,5 +13,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 @main struct SpineApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-    var body: some Scene { WindowGroup { LibraryView() }.defaultSize(width: 1280, height: 850) }
+    var body: some Scene {
+        WindowGroup { LibraryView() }.defaultSize(width: 1280, height: 850)
+            .commands {
+                CommandGroup(replacing: .appSettings) {
+                    SettingsLink { Text("E-Reader Settings…") }.keyboardShortcut(",")
+                }
+            }
+        Settings { EReaderSettingsView() }
+    }
 }
